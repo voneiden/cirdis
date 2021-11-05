@@ -72,7 +72,29 @@ window.addEventListener('resize', (e) => {
 });
 
 
-app.ports.canvasSize.subscribe(()=> {
-  requestAnimationFrame(() => {sendCanvasSize()})
+app.ports.canvasSize.subscribe(() => {
+  requestAnimationFrame(() => {
+    sendCanvasSize()
+  })
 
+})
+
+
+app.ports.checkImages.subscribe(() => {
+  requestAnimationFrame(() => {
+
+    const images = Array.from(document.querySelectorAll("svg image"))
+    const imageInformations = images.filter(i => i.className.baseVal.startsWith('layer-')).map(i => {
+      const tempImage = new Image()
+      tempImage.src = i.href.baseVal
+      return {
+        layer: i.className.baseVal.slice(6),
+        width: tempImage.width,
+        height: tempImage.height
+      }
+    })
+
+    app.ports.imageInformation.send(imageInformations)
+
+  })
 })
