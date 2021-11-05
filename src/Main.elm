@@ -21,7 +21,13 @@ import Task
 
 
 -- Todo things
--- make zoom more sane (=multiplier)
+-- allow scaling line segment width
+-- copy segment width to next segment (set it actually to model so it stays on?)
+-- placing pins and components?
+-- staging area
+-- via?
+-- copper pours
+-- undo/redo
 
 
 port mouseDrag : (MousePosition -> msg) -> Sub msg
@@ -112,11 +118,52 @@ type alias Point =
     }
 
 
-type Shape
-    = Trace
-    | Zone
-    | Pad
-    | Via
+
+-- traces, zones, nets, pads, components
+-- components contain pads
+-- nets contain traces, zones and pads
+
+
+type alias Net =
+    { conductors : List Conductor
+    }
+
+
+type alias Component =
+    { name : String
+    , pads : List Conductor
+    }
+
+
+type Conductor
+    = Trace (List TracePoint)
+    | Zone (List Point)
+    | Pad PadStyle PadShape
+    | Via Point Radius
+
+
+type alias Radius =
+    Float
+
+
+type alias Thickness =
+    Float
+
+
+type PadShape
+    = Circular Radius
+    | Rectangular Point Point
+
+
+type PadStyle
+    = Through
+    | Surface
+
+
+type alias TracePoint =
+    { point : Point
+    , thickness : Float
+    }
 
 
 type alias Transform =
@@ -424,8 +471,11 @@ fromPoint cmd point =
 mousePositionToPoint : BoundingClientRect -> Transform -> MousePosition -> Point
 mousePositionToPoint b t mousePosition =
     let
-        deltaX = mousePosition.offsetX - b.width / 2
-        deltaY = mousePosition.offsetY - b.height / 2
+        deltaX =
+            mousePosition.offsetX - b.width / 2
+
+        deltaY =
+            mousePosition.offsetY - b.height / 2
     in
     { x = t.x + deltaX * t.z, y = t.y + deltaY * t.z }
 
