@@ -2,7 +2,7 @@ port module Main exposing (..)
 
 import Base64
 import Browser exposing (Document)
-import Browser.Events exposing (onKeyDown)
+import Browser.Events exposing (onKeyDown, onMouseMove, onMouseUp)
 import Bytes exposing (Bytes)
 import File exposing (File)
 import File.Select as Select
@@ -102,11 +102,14 @@ type alias Model =
     , dragging : Bool
     , lastMousePosition : MousePosition
     , canvasBoundingClientRect : BoundingClientRect
+    , trace : List Point
     }
 
 
-type Point
-    = Point Int Int
+type alias Point =
+    { x : Float
+    , y : Float
+    }
 
 
 type Shape
@@ -180,7 +183,7 @@ transformToViewBox r t =
 
 defaultMousePosition : MousePosition
 defaultMousePosition =
-    { timeStamp = 0, offsetX = 0, offsetY = 0 }
+    { timeStamp = 0, offsetX = 0, offsetY = 0, button = 0 }
 
 
 defaultBoundingClientRect : BoundingClientRect
@@ -190,7 +193,7 @@ defaultBoundingClientRect =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model RemoteData.NotAsked [] Nothing defaultTransform False defaultMousePosition defaultBoundingClientRect, Cmd.none )
+    ( Model RemoteData.NotAsked [] Nothing defaultTransform False defaultMousePosition defaultBoundingClientRect [], Cmd.none )
 
 
 
@@ -219,6 +222,7 @@ type Msg
     | RemoveLayer Int
     | MouseDown MousePosition
     | MouseMove MousePosition
+    | MouseUp MousePosition
     | MouseOver
     | MouseOut
     | MouseWheel Float
@@ -277,17 +281,38 @@ update msg model =
             ( { model | layers = List.take index model.layers ++ List.drop (index + 1) model.layers }, Cmd.none )
 
         MouseDown mousePosition ->
-            ( { model | lastMousePosition = mousePosition }, startDrag () )
+            -- Middle mouse button starts drag
+            case mousePosition.button of
+                1 ->
+                    ( { model | lastMousePosition = mousePosition, dragging = True }, Cmd.none )
+
+                0 ->
+                    ( { model | trace = model.trace ++ [ mousePositionToPoint model.canvasBoundingClientRect model.transform mousePosition ] }, startDrag () )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        MouseUp mousePosition ->
+            case mousePosition.button of
+                1 ->
+                    ( { model | dragging = False }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
 
         MouseMove mousePosition ->
-            let
-                dx =
-                    model.lastMousePosition.offsetX - mousePosition.offsetX
+            if model.dragging then
+                let
+                    dx =
+                        model.lastMousePosition.offsetX - mousePosition.offsetX
 
-                dy =
-                    model.lastMousePosition.offsetY - mousePosition.offsetY
-            in
-            ( { model | lastMousePosition = mousePosition, transform = translateTransform model.canvasBoundingClientRect model.transform dx dy }, Cmd.none )
+                    dy =
+                        model.lastMousePosition.offsetY - mousePosition.offsetY
+                in
+                ( { model | lastMousePosition = mousePosition, transform = translateTransform model.canvasBoundingClientRect model.transform dx dy }, Cmd.none )
+
+            else
+                ( { model | lastMousePosition = mousePosition }, Cmd.none )
 
         MouseOver ->
             ( model, startWheel () )
@@ -307,23 +332,11 @@ update msg model =
                 info :: _ ->
                     let
                         -- Frame the layer nicely
-                        _ =
-                            Debug.log "canvas" model.canvasBoundingClientRect
-
-                        _ =
-                            Debug.log "info" info
-
                         widthRatio =
                             info.width / model.canvasBoundingClientRect.width
 
                         heightRatio =
                             info.height / model.canvasBoundingClientRect.height
-
-                        _ =
-                            Debug.log "width" widthRatio
-
-                        _ =
-                            Debug.log "Hieght" heightRatio
                     in
                     ( { model
                         | transform =
@@ -371,6 +384,7 @@ view model =
                                 , SvgA.preserveAspectRatio "slice"
                                 ]
                                 [ Maybe.withDefault (text "") <| Maybe.map viewLayer <| List.head model.layers
+                                , viewTrace model.canvasBoundingClientRect model.transform model.lastMousePosition model.trace
                                 ]
                             ]
                         , div [ id "right-menu" ]
@@ -400,6 +414,38 @@ viewLayer layer =
                     []
             )
             layer
+
+
+fromPoint : String -> Point -> String
+fromPoint cmd point =
+    cmd ++ " " ++ String.fromFloat point.x ++ "," ++ String.fromFloat point.y
+
+
+mousePositionToPoint : BoundingClientRect -> Transform -> MousePosition -> Point
+mousePositionToPoint b t mousePosition =
+    let
+        deltaX = mousePosition.offsetX - b.width / 2
+        deltaY = mousePosition.offsetY - b.height / 2
+    in
+    { x = t.x + deltaX * t.z, y = t.y + deltaY * t.z }
+
+
+viewTrace : BoundingClientRect -> Transform -> MousePosition -> List Point -> Svg Msg
+viewTrace b t mousePosition points =
+    case points of
+        start :: rest ->
+            let
+                d =
+                    SvgA.d <|
+                        String.join " " <|
+                            [ fromPoint "M" start ]
+                                ++ List.map (fromPoint "L") rest
+                                ++ [ fromPoint "L" (mousePositionToPoint b t mousePosition) ]
+            in
+            Svg.path [ d, SvgA.fill "none", SvgA.stroke "red" ] []
+
+        _ ->
+            Svg.text ""
 
 
 viewLayerList : List LayerDefinition -> Html Msg
@@ -461,15 +507,17 @@ type alias MousePosition =
     { timeStamp : Float
     , offsetX : Float
     , offsetY : Float
+    , button : Int
     }
 
 
 decodeMousePosition : Decoder MousePosition
 decodeMousePosition =
-    Decode.map3 MousePosition
+    Decode.map4 MousePosition
         (Decode.field "timeStamp" Decode.float)
         (Decode.field "offsetX" Decode.float)
         (Decode.field "offsetY" Decode.float)
+        (Decode.field "button" Decode.int)
 
 
 
@@ -484,4 +532,5 @@ subscriptions _ =
         , resize Resize
         , imageInformation GotImageInformation
         , onKeyDown (keyCode |> Decode.map KeyDown)
+        , onMouseUp (Decode.map MouseUp decodeMousePosition)
         ]

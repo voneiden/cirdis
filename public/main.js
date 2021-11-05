@@ -15,7 +15,7 @@ let sendDrag = false;
 document.addEventListener("mousemove", (e) => {
   let now = Date.now()
   // 30 fps? 25 fps looks bad
-  if (now - lastMouseMove < 33 || !sendDrag) {
+  if (now - lastMouseMove < 33) {
     console.log("Block event")
     return;
   }
