@@ -2,7 +2,7 @@ port module Main exposing (..)
 
 import Base64
 import Browser exposing (Document)
-import Browser.Events exposing (onKeyDown, onMouseMove, onMouseUp)
+import Browser.Events exposing (onKeyDown, onKeyUp, onMouseMove, onMouseUp)
 import Bytes exposing (Bytes)
 import File exposing (File)
 import File.Select as Select
@@ -104,13 +104,18 @@ type alias Model =
     { loadLayerStatus : LayerData
     , layers : List LayerDefinition
     , transform : Transform
+    , focused : Bool
     , dragging : Bool
+    , shift : Bool
+    , ctrl : Bool
     , lastMousePosition : MousePosition
     , canvasBoundingClientRect : BoundingClientRect
     , trace : List Point
     , radius : Float
     , thickness : Float
     , tool : Tool
+    , conductors : List ThroughConductor
+    , nextNetId : Int -- Running id for nets
     }
 
 
@@ -128,30 +133,49 @@ type alias Point =
 
 type Tool
     = SelectConductor (Maybe Conductor)
-    | SelectComponent (Maybe Component)
     | SelectNet (Maybe Net)
-    | CreateTrace Conductor
-    | CreateVia
-    | CreatePad
-    | CreateComponent Component
+    | CreateTrace (List TracePoint)
+    | CreateSurfacePad
+    | CreateThroughPad
+    | CreateZone
 
 
-type alias Net =
-    { conductors : List Conductor
+type alias NetInfo =
+    { id : Int
+    , name : String
+    , color : String
     }
 
 
-type alias Component =
-    { name : String
-    , pads : List Conductor
-    }
+type Net
+    = AutoNet NetInfo
+    | CustomNet NetInfo
+
+
+
+--type alias Component =
+--    { name : String
+--    , pads : List Conductor
+--    }
 
 
 type Conductor
-    = Trace (List TracePoint)
-    | Zone (List Point)
-    | Pad PadStyle PadShape
-    | Via Point Radius
+    = Surface SurfaceConductor
+    | Through ThroughConductor
+
+
+type SurfaceConductor
+    = Trace (List TracePoint) NetId
+    | SurfacePad Point Width NetId
+    | Zone (List Point) NetId
+
+
+type ThroughConductor
+    = ThroughPad Point Radius NetId
+
+
+type alias NetId =
+    Int
 
 
 type alias Radius =
@@ -162,14 +186,8 @@ type alias Thickness =
     Float
 
 
-type PadShape
-    = Circular Radius
-    | Rectangular Point Point
-
-
-type PadStyle
-    = Through
-    | Surface
+type alias Width =
+    Float
 
 
 type alias TracePoint =
@@ -257,7 +275,7 @@ defaultBoundingClientRect =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model RemoteData.NotAsked [] defaultTransform False defaultMousePosition defaultBoundingClientRect [] 5 10 (SelectConductor Nothing), Cmd.none )
+    ( Model RemoteData.NotAsked [] defaultTransform False False False False defaultMousePosition defaultBoundingClientRect [] 5 10 (SelectConductor Nothing) [] 1, canvasSize () )
 
 
 
@@ -269,6 +287,7 @@ type alias LayerDefinition =
     , mimeType : String
     , b64Data : String
     , opacity : Int
+    , conductors : List SurfaceConductor
     }
 
 
@@ -292,7 +311,8 @@ type Msg
     | MouseWheel Float
     | Resize BoundingClientRect
     | GotImageInformation (List ImageInformation)
-    | KeyDown Int
+    | KeyDown Key
+    | KeyUp Key
     | SetTool Tool
 
 
@@ -333,6 +353,7 @@ update msg model =
                             , mimeType = fileInfo.mime
                             , b64Data = b64
                             , opacity = 100
+                            , conductors = []
                             }
                     in
                     ( { model | layers = layerDefinition :: model.layers }
@@ -352,7 +373,7 @@ update msg model =
                     ( { model | lastMousePosition = mousePosition, dragging = True }, Cmd.none )
 
                 0 ->
-                    updateTool model mousePosition
+                    updateTool msg model
 
                 _ ->
                     ( model, Cmd.none )
@@ -380,13 +401,21 @@ update msg model =
                 ( { model | lastMousePosition = mousePosition }, Cmd.none )
 
         MouseOver ->
-            ( model, startWheel () )
+            ( {model | focused = True }, startWheel () )
 
         MouseOut ->
-            ( model, endWheel () )
+            ( {model | focused = False}, endWheel () )
 
         MouseWheel delta ->
-            ( { model | transform = zoomTransform model.transform delta }, Cmd.none )
+            case ( model.shift, model.ctrl ) of
+                ( False, False ) ->
+                    ( { model | transform = zoomTransform model.transform delta }, Cmd.none )
+
+                ( True, False ) ->
+                    updateTool msg model
+
+                _ ->
+                    ( model, Cmd.none )
 
         Resize boundingClientRect ->
             -- TODO store this somewhere
@@ -416,10 +445,27 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        KeyDown keyCode ->
-            case keyCode of
+        KeyDown key ->
+            case key.keyCode of
                 86 ->
                     ( { model | layers = cycle model.layers }, Cmd.none )
+
+                16 ->
+                    ( { model | shift = True }, Cmd.none )
+
+                17 ->
+                    ( { model | ctrl = True }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        KeyUp key ->
+            case key.keyCode of
+                16 ->
+                    ( { model | shift = False }, Cmd.none )
+
+                17 ->
+                    ( { model | ctrl = False }, Cmd.none )
 
                 _ ->
                     ( model, Cmd.none )
@@ -428,18 +474,81 @@ update msg model =
             ( { model | tool = tool }, Cmd.none )
 
 
-updateTool : Model -> MousePosition -> ( Model, Cmd Msg )
-updateTool model mousePosition =
-    case model.tool of
-        CreateTrace (Trace points) ->
+
+--addSurfaceConductor : SurfaceConductor -> Model -> Model
+--addSurfaceCondcutor surfaceConductor model =
+--    case List.head model.layers of
+--        Just layer ->
+--            layer.
+
+
+{-| Come up with some neat way to test if the conductor should connect to some existing net
+-}
+
+
+
+-- TODO some kind of netsolver that can also check for broken nets and split the data appropriately
+-- TODO kinda wanna check for collisions too!
+
+
+addThroughConductor : (NetId -> ThroughConductor) -> Model -> Model
+addThroughConductor toConductor model =
+    case toConductor 0 of
+        ThroughPad point radius _ ->
+            { model | conductors = toConductor 0 :: model.conductors }
+
+updateTool : Msg -> Model -> ( Model, Cmd Msg )
+updateTool msg model =
+    case msg of
+        MouseDown mousePosition ->
             let
-                t2 =
-                    points ++ [ pointToTracePoint (mousePositionToPoint model.canvasBoundingClientRect model.transform mousePosition) model.thickness ]
+                point =
+                    mousePositionToPoint model.canvasBoundingClientRect model.transform mousePosition
             in
-            ( { model | tool = CreateTrace (Trace t2) }, Cmd.none )
+            case model.tool of
+                CreateTrace points ->
+                    let
+                        t2 =
+                            points ++ [ pointToTracePoint point model.thickness ]
+                    in
+                    ( { model | tool = CreateTrace t2 }, Cmd.none )
+
+                CreateThroughPad ->
+                    ( addThroughConductor (ThroughPad point model.radius) model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        MouseWheel delta ->
+            case model.tool of
+                CreateThroughPad ->
+                    ( updateRadius delta model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
 
         _ ->
             ( model, Cmd.none )
+
+
+updateRadius : Float -> Model -> Model
+updateRadius delta model =
+    let
+        multiplier =
+            1.25
+
+        newZ =
+            if delta < 0 then
+                model.radius * multiplier
+
+            else
+                model.radius / multiplier
+    in
+    if newZ > 0.9 && newZ < 1.1 then
+        { model | radius = 1 }
+
+    else
+        { model | radius = newZ }
 
 
 
@@ -465,20 +574,23 @@ view model =
                                 , SvgA.viewBox <| transformToViewBox model.canvasBoundingClientRect model.transform
                                 , SvgA.preserveAspectRatio "slice"
                                 ]
-                                [ Maybe.withDefault (text "") <| Maybe.map viewLayer <| List.head model.layers
-                                , viewTool model
-                                ]
+                                ([ Maybe.withDefault (text "") <| Maybe.map viewLayer <| List.head model.layers
+                                 ]
+                                    ++ List.map viewThroughConductor model.conductors
+                                    ++ [ viewTool model
+                                       ]
+                                )
                             ]
                         , div [ id "right-menu" ]
                             [ viewLayerList model.layers
                             , viewLayerSelect model.loadLayerStatus
                             , div [] [ button [ onClick <| SetTool <| SelectConductor Nothing ] [ text "Select Conductor" ] ]
-                            , div [] [ button [ onClick <| SetTool <| SelectComponent Nothing ] [ text "Select Component" ] ]
                             , div [] [ button [ onClick <| SetTool <| SelectNet Nothing ] [ text "Select Net" ] ]
-                            , div [] [ button [ onClick <| SetTool <| CreateComponent <| { name = "New Component", pads = [] } ] [ text "Create Component" ] ]
-                            , div [] [ button [ onClick <| SetTool <| CreateVia ] [ text "Create Via" ] ]
-                            , div [] [ button [ onClick <| SetTool <| CreateTrace <| Trace [] ] [ text "Create Trace" ] ]
-                            , div [] [ button [ onClick <| SetTool <| CreatePad ] [ text "Create Pad" ] ]
+                            , div [] [ button [ onClick <| SetTool <| CreateThroughPad ] [ text "Create THT Pad/Via" ] ]
+                            , div [] [ button [ onClick <| SetTool <| CreateSurfacePad ] [ text "Create SMT Pad" ] ]
+                            , div [] [ button [ onClick <| SetTool <| CreateTrace [] ] [ text "Create Trace" ] ]
+
+
                             ]
                         ]
                     ]
@@ -513,21 +625,31 @@ fromPoint cmd point =
 {-| Take elements out of list while elements match a certain criteria
 and return a tuple of matched and unmatched elements
 -}
-takeWhile : (a -> Bool) -> List a -> (List a, List a)
+takeWhile : (a -> Bool) -> List a -> ( List a, List a )
 takeWhile test list =
     case list of
         a :: rest ->
             if test a then
                 let
-                    (matched, unmatched) = takeWhile test rest
+                    ( matched, unmatched ) =
+                        takeWhile test rest
                 in
-                (a :: matched, unmatched)
+                ( a :: matched, unmatched )
 
             else
-                ([ ], a :: rest)
+                ( [], a :: rest )
 
         _ ->
-            ([], [])
+            ( [], [] )
+
+
+
+--
+-- TODO use this, but I guess shorten the var names a bit first
+
+
+type alias CoordinateConversion a =
+    { a | canvasBoundingClientRect : BoundingClientRect, transform : Transform }
 
 
 mousePositionToPoint : BoundingClientRect -> Transform -> MousePosition -> Point
@@ -542,11 +664,20 @@ mousePositionToPoint b t mousePosition =
     { x = t.x + deltaX * t.z, y = t.y + deltaY * t.z }
 
 
+{-| Display anything and everything related to the active tool
+-}
 viewTool : Model -> Svg Msg
 viewTool model =
     case model.tool of
-        CreateTrace (Trace tracePoints) ->
+        CreateTrace tracePoints ->
             viewTrace model tracePoints
+
+        CreateThroughPad ->
+            let
+                point =
+                    mousePositionToPoint model.canvasBoundingClientRect model.transform model.lastMousePosition
+            in
+            viewThroughConductor <| ThroughPad point model.radius 0
 
         _ ->
             Svg.text ""
@@ -554,9 +685,16 @@ viewTool model =
 
 viewTrace : Model -> List TracePoint -> Svg Msg
 viewTrace model points =
+    let
+        constructionTrace =
+            if model.focused then
+                [ viewConstructionTrace model points ]
+            else
+                []
+    in
     Svg.g [] <|
         viewTraceSegmented points
-            ++ [ viewConstructionTrace model points ]
+            ++ constructionTrace
 
 
 pathFromPoints : List TracePoint -> Svg Msg
@@ -603,6 +741,19 @@ viewConstructionTrace model tracePoints =
 
         _ ->
             Svg.text ""
+
+
+viewThroughConductor : ThroughConductor -> Svg Msg
+viewThroughConductor throughConductor =
+    case throughConductor of
+            ThroughPad point radius netId ->
+                Svg.circle
+                    [ SvgA.cx <| String.fromFloat point.x
+                    , SvgA.cy <| String.fromFloat point.y
+                    , SvgA.r <| String.fromFloat radius
+                    ]
+                    []
+
 
 
 viewLayerList : List LayerDefinition -> Html Msg
@@ -677,6 +828,21 @@ decodeMousePosition =
         (Decode.field "button" Decode.int)
 
 
+type alias Key =
+    { keyCode : Int
+    , shift : Bool
+    , ctrl : Bool
+    }
+
+
+decodeKey : Decoder Key
+decodeKey =
+    Decode.map3 Key
+        (Decode.field "keyCode" Decode.int)
+        (Decode.field "shiftKey" Decode.bool)
+        (Decode.field "ctrlKey" Decode.bool)
+
+
 
 -- SUBSCRIPTIONS
 
@@ -688,6 +854,7 @@ subscriptions _ =
         , wheel MouseWheel
         , resize Resize
         , imageInformation GotImageInformation
-        , onKeyDown (keyCode |> Decode.map KeyDown)
+        , onKeyDown (decodeKey |> Decode.map KeyDown)
+        , onKeyUp (decodeKey |> Decode.map KeyUp)
         , onMouseUp (Decode.map MouseUp decodeMousePosition)
         ]

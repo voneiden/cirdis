@@ -19,6 +19,10 @@ document.addEventListener("mousemove", (e) => {
     console.log("Block event")
     return;
   }
+  if (e.target.id !== "canvas") {
+    console.log("Ignore mousemove outside canvas")
+    return;
+  }
   console.log("Pass event", e)
   app.ports.mouseDrag.send(e)
   lastMouseMove = now
