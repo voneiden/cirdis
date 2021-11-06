@@ -103,12 +103,14 @@ type alias LayerData =
 type alias Model =
     { loadLayerStatus : LayerData
     , layers : List LayerDefinition
-    , active : Maybe Int
     , transform : Transform
     , dragging : Bool
     , lastMousePosition : MousePosition
     , canvasBoundingClientRect : BoundingClientRect
     , trace : List Point
+    , radius : Float
+    , thickness : Float
+    , tool : Tool
     }
 
 
@@ -122,6 +124,16 @@ type alias Point =
 -- traces, zones, nets, pads, components
 -- components contain pads
 -- nets contain traces, zones and pads
+
+
+type Tool
+    = SelectConductor (Maybe Conductor)
+    | SelectComponent (Maybe Component)
+    | SelectNet (Maybe Net)
+    | CreateTrace Conductor
+    | CreateVia
+    | CreatePad
+    | CreateComponent Component
 
 
 type alias Net =
@@ -164,6 +176,11 @@ type alias TracePoint =
     { point : Point
     , thickness : Float
     }
+
+
+pointToTracePoint : Point -> Float -> TracePoint
+pointToTracePoint point thickness =
+    { point = point, thickness = thickness }
 
 
 type alias Transform =
@@ -240,7 +257,7 @@ defaultBoundingClientRect =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model RemoteData.NotAsked [] Nothing defaultTransform False defaultMousePosition defaultBoundingClientRect [], Cmd.none )
+    ( Model RemoteData.NotAsked [] defaultTransform False defaultMousePosition defaultBoundingClientRect [] 5 10 (SelectConductor Nothing), Cmd.none )
 
 
 
@@ -276,6 +293,7 @@ type Msg
     | Resize BoundingClientRect
     | GotImageInformation (List ImageInformation)
     | KeyDown Int
+    | SetTool Tool
 
 
 {-| Take the first element of a list and move it as the last element
@@ -334,7 +352,7 @@ update msg model =
                     ( { model | lastMousePosition = mousePosition, dragging = True }, Cmd.none )
 
                 0 ->
-                    ( { model | trace = model.trace ++ [ mousePositionToPoint model.canvasBoundingClientRect model.transform mousePosition ] }, startDrag () )
+                    updateTool model mousePosition
 
                 _ ->
                     ( model, Cmd.none )
@@ -406,6 +424,23 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        SetTool tool ->
+            ( { model | tool = tool }, Cmd.none )
+
+
+updateTool : Model -> MousePosition -> ( Model, Cmd Msg )
+updateTool model mousePosition =
+    case model.tool of
+        CreateTrace (Trace points) ->
+            let
+                t2 =
+                    points ++ [ pointToTracePoint (mousePositionToPoint model.canvasBoundingClientRect model.transform mousePosition) model.thickness ]
+            in
+            ( { model | tool = CreateTrace (Trace t2) }, Cmd.none )
+
+        _ ->
+            ( model, Cmd.none )
+
 
 
 -- VIEW
@@ -425,18 +460,25 @@ view model =
                             [ Svg.svg
                                 [ SvgA.id "canvas"
                                 , SvgE.preventDefaultOn "mousedown" (Decode.map (\msg -> ( msg, True )) (Decode.map MouseDown decodeMousePosition))
-                                , SvgE.onMouseOut MouseOver
+                                , SvgE.onMouseOver MouseOver
                                 , SvgE.onMouseOut MouseOut
                                 , SvgA.viewBox <| transformToViewBox model.canvasBoundingClientRect model.transform
                                 , SvgA.preserveAspectRatio "slice"
                                 ]
                                 [ Maybe.withDefault (text "") <| Maybe.map viewLayer <| List.head model.layers
-                                , viewTrace model.canvasBoundingClientRect model.transform model.lastMousePosition model.trace
+                                , viewTool model
                                 ]
                             ]
                         , div [ id "right-menu" ]
                             [ viewLayerList model.layers
-                            , viewLayerSelect "changeit" model.loadLayerStatus
+                            , viewLayerSelect model.loadLayerStatus
+                            , div [] [ button [ onClick <| SetTool <| SelectConductor Nothing ] [ text "Select Conductor" ] ]
+                            , div [] [ button [ onClick <| SetTool <| SelectComponent Nothing ] [ text "Select Component" ] ]
+                            , div [] [ button [ onClick <| SetTool <| SelectNet Nothing ] [ text "Select Net" ] ]
+                            , div [] [ button [ onClick <| SetTool <| CreateComponent <| { name = "New Component", pads = [] } ] [ text "Create Component" ] ]
+                            , div [] [ button [ onClick <| SetTool <| CreateVia ] [ text "Create Via" ] ]
+                            , div [] [ button [ onClick <| SetTool <| CreateTrace <| Trace [] ] [ text "Create Trace" ] ]
+                            , div [] [ button [ onClick <| SetTool <| CreatePad ] [ text "Create Pad" ] ]
                             ]
                         ]
                     ]
@@ -480,19 +522,63 @@ mousePositionToPoint b t mousePosition =
     { x = t.x + deltaX * t.z, y = t.y + deltaY * t.z }
 
 
-viewTrace : BoundingClientRect -> Transform -> MousePosition -> List Point -> Svg Msg
-viewTrace b t mousePosition points =
-    case points of
+viewTool : Model -> Svg Msg
+viewTool model =
+    case model.tool of
+        CreateTrace (Trace tracePoints) ->
+            viewTrace model tracePoints
+
+        _ ->
+            Svg.text ""
+
+
+viewTrace : Model -> List TracePoint -> Svg Msg
+viewTrace model points =
+    Svg.g [] <|
+        viewTraceSegmented points
+            ++ [ viewConstructionTrace model points ]
+
+
+pathFromPoints : List TracePoint -> Svg Msg
+pathFromPoints tracePoints =
+    case tracePoints of
         start :: rest ->
             let
                 d =
                     SvgA.d <|
                         String.join " " <|
-                            [ fromPoint "M" start ]
-                                ++ List.map (fromPoint "L") rest
-                                ++ [ fromPoint "L" (mousePositionToPoint b t mousePosition) ]
+                            [ fromPoint "M" start.point ]
+                                ++ List.map (\tp -> fromPoint "L" tp.point) rest
             in
-            Svg.path [ d, SvgA.fill "none", SvgA.stroke "red" ] []
+            Svg.path
+                [ d
+                , SvgA.fill "none"
+                , SvgA.stroke "red"
+                , SvgA.strokeWidth (String.fromFloat start.thickness)
+                , SvgA.strokeLinecap "round"
+                ]
+                []
+
+        _ ->
+            Svg.text ""
+
+
+viewTraceSegmented : List TracePoint -> List (Svg Msg)
+viewTraceSegmented tracePoints =
+    -- TODO add some intelligence here and merge lines that have the same thickness
+    case tracePoints of
+        start :: end :: rest ->
+            pathFromPoints [ start, end ] :: viewTraceSegmented (end :: rest)
+
+        _ ->
+            [ Svg.text "" ]
+
+
+viewConstructionTrace : Model -> List TracePoint -> Svg Msg
+viewConstructionTrace model tracePoints =
+    case List.reverse tracePoints of
+        last :: _ ->
+            pathFromPoints [ last, pointToTracePoint (mousePositionToPoint model.canvasBoundingClientRect model.transform model.lastMousePosition) model.thickness ]
 
         _ ->
             Svg.text ""
@@ -512,8 +598,8 @@ viewLayerControls index layer =
         ]
 
 
-viewLayerSelect : String -> LayerData -> Html Msg
-viewLayerSelect title layerData =
+viewLayerSelect : LayerData -> Html Msg
+viewLayerSelect layerData =
     case layerData of
         RemoteData.NotAsked ->
             div []

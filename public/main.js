@@ -26,9 +26,7 @@ document.addEventListener("mousemove", (e) => {
 document.addEventListener("mouseup", () => {
   sendDrag = false;
 })
-app.ports.startDrag.subscribe(() => {
-  sendDrag = true;
-})
+
 
 // Scroll throttling
 let lastWheel = 0;
