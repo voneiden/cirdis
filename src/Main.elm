@@ -510,6 +510,26 @@ fromPoint cmd point =
     cmd ++ " " ++ String.fromFloat point.x ++ "," ++ String.fromFloat point.y
 
 
+{-| Take elements out of list while elements match a certain criteria
+and return a tuple of matched and unmatched elements
+-}
+takeWhile : (a -> Bool) -> List a -> (List a, List a)
+takeWhile test list =
+    case list of
+        a :: rest ->
+            if test a then
+                let
+                    (matched, unmatched) = takeWhile test rest
+                in
+                (a :: matched, unmatched)
+
+            else
+                ([ ], a :: rest)
+
+        _ ->
+            ([], [])
+
+
 mousePositionToPoint : BoundingClientRect -> Transform -> MousePosition -> Point
 mousePositionToPoint b t mousePosition =
     let
@@ -566,6 +586,7 @@ pathFromPoints tracePoints =
 viewTraceSegmented : List TracePoint -> List (Svg Msg)
 viewTraceSegmented tracePoints =
     -- TODO add some intelligence here and merge lines that have the same thickness
+    -- use takeWhile here
     case tracePoints of
         start :: end :: rest ->
             pathFromPoints [ start, end ] :: viewTraceSegmented (end :: rest)
