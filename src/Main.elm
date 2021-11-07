@@ -2,13 +2,14 @@ port module Main exposing (..)
 
 import Base64
 import Browser exposing (Document)
-import Browser.Events exposing (onKeyDown, onKeyUp, onMouseMove, onMouseUp)
+import Browser.Events exposing (onKeyDown, onKeyUp, onMouseUp)
 import Bytes exposing (Bytes)
+import Dict exposing (Dict)
 import File exposing (File)
 import File.Select as Select
-import Html exposing (Html, button, div, input, span, text)
-import Html.Attributes exposing (class, id, placeholder, value)
-import Html.Events exposing (keyCode, onClick)
+import Html exposing (Html, button, div, span, text)
+import Html.Attributes exposing (class, id)
+import Html.Events exposing (onClick, onMouseEnter, onMouseLeave)
 import Html.Lazy exposing (lazy)
 import Json.Decode as Decode exposing (Decoder)
 import RemoteData exposing (RemoteData)
@@ -28,6 +29,7 @@ import Task
 -- via?
 -- copper pours
 -- undo/redo
+-- snapping can be optimized with some kind of dict mapping to pixel regions
 
 
 port mouseDrag : (MousePosition -> msg) -> Sub msg
@@ -116,6 +118,7 @@ type alias Model =
     , tool : Tool
     , conductors : List ThroughConductor
     , nextNetId : Int -- Running id for nets
+    , netInfo : Dict String NetInfo
     }
 
 
@@ -141,15 +144,13 @@ type Tool
 
 
 type alias NetInfo =
-    { id : Int
-    , name : String
-    , color : String
+    { color : String
     }
 
 
 type Net
-    = AutoNet NetInfo
-    | CustomNet NetInfo
+    = AutoNet
+    | CustomNet String
 
 
 
@@ -165,13 +166,13 @@ type Conductor
 
 
 type SurfaceConductor
-    = Trace (List TracePoint) NetId
-    | SurfacePad Point Width NetId
-    | Zone (List Point) NetId
+    = Trace (List TracePoint) Net
+    | SurfacePad Point Width Net
+    | Zone (List Point) Net
 
 
 type ThroughConductor
-    = ThroughPad Point Radius NetId
+    = ThroughPad Point Radius Net
 
 
 type alias NetId =
@@ -275,7 +276,7 @@ defaultBoundingClientRect =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model RemoteData.NotAsked [] defaultTransform False False False False defaultMousePosition defaultBoundingClientRect [] 5 10 (SelectConductor Nothing) [] 1, canvasSize () )
+    ( Model RemoteData.NotAsked [] defaultTransform False False False False defaultMousePosition defaultBoundingClientRect [] 5 10 (SelectConductor Nothing) [] 1 Dict.empty, canvasSize () )
 
 
 
@@ -401,10 +402,10 @@ update msg model =
                 ( { model | lastMousePosition = mousePosition }, Cmd.none )
 
         MouseOver ->
-            ( {model | focused = True }, startWheel () )
+            ( { model | focused = True }, startWheel () )
 
         MouseOut ->
-            ( {model | focused = False}, endWheel () )
+            ( { model | focused = False }, endWheel () )
 
         MouseWheel delta ->
             case ( model.shift, model.ctrl ) of
@@ -491,11 +492,12 @@ update msg model =
 -- TODO kinda wanna check for collisions too!
 
 
-addThroughConductor : (NetId -> ThroughConductor) -> Model -> Model
+addThroughConductor : (Net -> ThroughConductor) -> Model -> Model
 addThroughConductor toConductor model =
-    case toConductor 0 of
+    case toConductor AutoNet of
         ThroughPad point radius _ ->
-            { model | conductors = toConductor 0 :: model.conductors }
+            { model | conductors = toConductor AutoNet :: model.conductors }
+
 
 updateTool : Msg -> Model -> ( Model, Cmd Msg )
 updateTool msg model =
@@ -551,6 +553,121 @@ updateRadius delta model =
         { model | radius = newZ }
 
 
+distanceToPoint : Point -> Point -> Float
+distanceToPoint p1 p2 =
+    sqrt ((p1.x - p2.x) ^ 2 + (p1.y - p2.y) ^ 2)
+
+
+distanceToConductor : Point -> Conductor -> Maybe ( Float, Point, Conductor )
+distanceToConductor point conductor =
+    conductorPoints conductor
+        |> List.map (\conductorPoint -> ( distanceToPoint point conductorPoint, conductorPoint, conductor ))
+        |> List.sortBy (\( d, _, _ ) -> d)
+        |> List.head
+
+
+conductorPoints : Conductor -> List Point
+conductorPoints conductor =
+    case conductor of
+        Through tht ->
+            throughConductorPoints tht
+
+        Surface smt ->
+            surfaceConductorPoints smt
+
+
+throughConductorPoints : ThroughConductor -> List Point
+throughConductorPoints tht =
+    case tht of
+        ThroughPad point _ _ ->
+            [ point ]
+
+
+surfaceConductorPoints : SurfaceConductor -> List Point
+surfaceConductorPoints smt =
+    case smt of
+        Trace tracePoints _ ->
+            List.map .point tracePoints
+
+        SurfacePad point _ _ ->
+            [ point ]
+
+        Zone points _ ->
+            points
+
+
+snapTo : Point -> List ThroughConductor -> List SurfaceConductor -> Maybe ( Conductor, Point )
+snapTo point thts smts =
+    let
+        closest =
+            List.map Through thts
+                ++ List.map Surface smts
+                |> List.filterMap (distanceToConductor point)
+                |> List.sortBy (\( d, _, _ ) -> d)
+                |> List.head
+    in
+    case closest of
+        Just (snapDistance, snapPoint, snapConductor) ->
+            if snapDistance < 20 then
+                Just ( snapConductor, snapPoint )
+
+            else
+                Nothing
+
+        Nothing ->
+            Nothing
+
+
+
+--let
+--    distances =
+--        List.sortBy (\( distance, _ ) -> distance) <|
+--            List.map (\c -> ( distanceToConductor point c, c )) <|
+--
+--in
+--Nothing
+
+
+conductorNet : Conductor -> Net
+conductorNet conductor =
+    case conductor of
+        Through tht ->
+            throughConductorNet tht
+
+        Surface smt ->
+            surfaceConductorNet smt
+
+
+throughConductorNet : ThroughConductor -> Net
+throughConductorNet tht =
+    case tht of
+        ThroughPad _ _ net ->
+            net
+
+
+surfaceConductorNet : SurfaceConductor -> Net
+surfaceConductorNet smt =
+    case smt of
+        Trace _ net ->
+            net
+
+        SurfacePad _ _ net ->
+            net
+
+        Zone _ net ->
+            net
+
+
+pointNet : Point -> List ThroughConductor -> List SurfaceConductor -> Net
+pointNet point thts smts =
+    case snapTo point thts smts of
+        Just ( conductor, _ ) ->
+            conductorNet conductor
+
+        Nothing ->
+            AutoNet
+
+
 
 -- VIEW
 
@@ -565,12 +682,14 @@ view model =
                     [ id "root"
                     ]
                     [ div [ class "flex-row" ]
-                        [ div [ id "canvas-container" ]
+                        [ div
+                            [ id "canvas-container"
+                            , onMouseEnter MouseOver
+                            , onMouseLeave MouseOut
+                            ]
                             [ Svg.svg
                                 [ SvgA.id "canvas"
                                 , SvgE.preventDefaultOn "mousedown" (Decode.map (\msg -> ( msg, True )) (Decode.map MouseDown decodeMousePosition))
-                                , SvgE.onMouseOver MouseOver
-                                , SvgE.onMouseOut MouseOut
                                 , SvgA.viewBox <| transformToViewBox model.canvasBoundingClientRect model.transform
                                 , SvgA.preserveAspectRatio "slice"
                                 ]
@@ -589,8 +708,6 @@ view model =
                             , div [] [ button [ onClick <| SetTool <| CreateThroughPad ] [ text "Create THT Pad/Via" ] ]
                             , div [] [ button [ onClick <| SetTool <| CreateSurfacePad ] [ text "Create SMT Pad" ] ]
                             , div [] [ button [ onClick <| SetTool <| CreateTrace [] ] [ text "Create Trace" ] ]
-
-
                             ]
                         ]
                     ]
@@ -677,7 +794,7 @@ viewTool model =
                 point =
                     mousePositionToPoint model.canvasBoundingClientRect model.transform model.lastMousePosition
             in
-            viewThroughConductor <| ThroughPad point model.radius 0
+            viewThroughConductor <| ThroughPad point model.radius AutoNet
 
         _ ->
             Svg.text ""
@@ -689,6 +806,7 @@ viewTrace model points =
         constructionTrace =
             if model.focused then
                 [ viewConstructionTrace model points ]
+
             else
                 []
     in
@@ -737,7 +855,16 @@ viewConstructionTrace : Model -> List TracePoint -> Svg Msg
 viewConstructionTrace model tracePoints =
     case List.reverse tracePoints of
         last :: _ ->
-            pathFromPoints [ last, pointToTracePoint (mousePositionToPoint model.canvasBoundingClientRect model.transform model.lastMousePosition) model.thickness ]
+            let
+                mousePoint = mousePositionToPoint model.canvasBoundingClientRect model.transform model.lastMousePosition
+                point = case snapTo mousePoint model.conductors (Maybe.withDefault [] (Maybe.map (\l -> l.conductors) (List.head model.layers))) of
+                    Just (_, snapPoint) ->
+                        snapPoint
+                    Nothing ->
+                        mousePoint
+                    --snapTo
+            in
+            pathFromPoints [ last, pointToTracePoint point model.thickness ]
 
         _ ->
             Svg.text ""
@@ -746,14 +873,13 @@ viewConstructionTrace model tracePoints =
 viewThroughConductor : ThroughConductor -> Svg Msg
 viewThroughConductor throughConductor =
     case throughConductor of
-            ThroughPad point radius netId ->
-                Svg.circle
-                    [ SvgA.cx <| String.fromFloat point.x
-                    , SvgA.cy <| String.fromFloat point.y
-                    , SvgA.r <| String.fromFloat radius
-                    ]
-                    []
-
+        ThroughPad point radius netId ->
+            Svg.circle
+                [ SvgA.cx <| String.fromFloat point.x
+                , SvgA.cy <| String.fromFloat point.y
+                , SvgA.r <| String.fromFloat radius
+                ]
+                []
 
 
 viewLayerList : List LayerDefinition -> Html Msg
@@ -791,24 +917,6 @@ viewLayerSelect layerData =
         RemoteData.Success result ->
             div []
                 [ text "Success todo" ]
-
-
-tmptmptmp title layerType layerData =
-    case layerData of
-        RemoteData.NotAsked ->
-            button [ onClick <| GetLayerImage ] [ text <| "Import" ++ title ]
-
-        RemoteData.Success layer ->
-            div []
-                [ text "Ok"
-                , span [ onClick <| RemoveLayer layerType ] [ text "[Remove]" ]
-                ]
-
-        RemoteData.Failure error ->
-            text "Error"
-
-        RemoteData.Loading ->
-            text "Loading.."
 
 
 type alias MousePosition =

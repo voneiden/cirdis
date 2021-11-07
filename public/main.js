@@ -19,7 +19,8 @@ document.addEventListener("mousemove", (e) => {
     console.log("Block event")
     return;
   }
-  if (e.target.id !== "canvas") {
+  const canvas = document.getElementById('canvas')
+  if (!canvas.contains(e.target)) {
     console.log("Ignore mousemove outside canvas")
     return;
   }
