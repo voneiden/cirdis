@@ -119,7 +119,33 @@ type alias Model =
     , conductors : List ThroughConductor
     , nextNetId : Int -- Running id for nets
     , netInfo : Dict String NetInfo
+    , snapDistance : Float
+    , autoNetColor : String
     }
+
+
+init : () -> ( Model, Cmd Msg )
+init _ =
+    ( Model RemoteData.NotAsked
+        []
+        defaultTransform
+        False
+        False
+        False
+        False
+        defaultMousePosition
+        defaultBoundingClientRect
+        []
+        5
+        10
+        (SelectConductor Nothing)
+        []
+        1
+        Dict.empty
+        20
+        "#aaaaaa"
+    , canvasSize ()
+    )
 
 
 type alias Point =
@@ -137,7 +163,7 @@ type alias Point =
 type Tool
     = SelectConductor (Maybe Conductor)
     | SelectNet (Maybe Net)
-    | CreateTrace (List TracePoint)
+    | CreateTrace (List (ConstructionPoint Thickness))
     | CreateSurfacePad
     | CreateThroughPad
     | CreateZone
@@ -149,8 +175,8 @@ type alias NetInfo =
 
 
 type Net
-    = AutoNet
-    | CustomNet String
+    = AutoNet Int
+    | CustomNet String String
 
 
 
@@ -195,6 +221,11 @@ type alias TracePoint =
     { point : Point
     , thickness : Float
     }
+
+
+
+--type alias TraceData a =
+--    { a | thickness : Float}
 
 
 pointToTracePoint : Point -> Float -> TracePoint
@@ -272,11 +303,6 @@ defaultMousePosition =
 defaultBoundingClientRect : BoundingClientRect
 defaultBoundingClientRect =
     { x = 0, y = 0, width = 500, height = 500, top = 0 }
-
-
-init : () -> ( Model, Cmd Msg )
-init _ =
-    ( Model RemoteData.NotAsked [] defaultTransform False False False False defaultMousePosition defaultBoundingClientRect [] 5 10 (SelectConductor Nothing) [] 1 Dict.empty, canvasSize () )
 
 
 
@@ -475,12 +501,34 @@ update msg model =
             ( { model | tool = tool }, Cmd.none )
 
 
+addSurfaceConductor : SurfaceConductor -> Model -> Model
+addSurfaceConductor surfaceConductor model =
+    case model.layers of
+        layer :: others ->
+            let
+                updatedLayer =
+                    { layer | conductors = surfaceConductor :: layer.conductors }
+            in
+            { model | layers = updatedLayer :: others }
 
---addSurfaceConductor : SurfaceConductor -> Model -> Model
---addSurfaceCondcutor surfaceConductor model =
---    case List.head model.layers of
---        Just layer ->
---            layer.
+        _ ->
+            model
+
+
+constructionPointToTracePoint : ConstructionPoint Thickness -> TracePoint
+constructionPointToTracePoint cp =
+    { point = constructionPointPoint cp, thickness = constructionPointA cp }
+
+
+constructionPointsToTracePoints : List (ConstructionPoint Thickness) -> List TracePoint
+constructionPointsToTracePoints cps =
+    List.map constructionPointToTracePoint cps
+
+
+constructionPointsToTrace : List (ConstructionPoint Thickness) -> SurfaceConductor
+constructionPointsToTrace points =
+    -- todo net
+    Trace (constructionPointsToTracePoints points) (AutoNet 0)
 
 
 {-| Come up with some neat way to test if the conductor should connect to some existing net
@@ -494,9 +542,44 @@ update msg model =
 
 addThroughConductor : (Net -> ThroughConductor) -> Model -> Model
 addThroughConductor toConductor model =
-    case toConductor AutoNet of
+    case toConductor (AutoNet 0) of
         ThroughPad point radius _ ->
-            { model | conductors = toConductor AutoNet :: model.conductors }
+            { model | nextNetId = model.nextNetId + 1, conductors = toConductor (AutoNet model.nextNetId) :: model.conductors }
+
+
+type ConstructionPoint a
+    = FreePoint Point a
+    | SnapPoint Point Conductor a
+
+
+constructionPointPoint : ConstructionPoint a -> Point
+constructionPointPoint sp =
+    case sp of
+        FreePoint p _ ->
+            p
+
+        SnapPoint p _ _ ->
+            p
+
+
+constructionPointConductor : ConstructionPoint a -> Maybe Conductor
+constructionPointConductor sp =
+    case sp of
+        FreePoint p _ ->
+            Nothing
+
+        SnapPoint _ c _ ->
+            Just c
+
+
+constructionPointA : ConstructionPoint a -> a
+constructionPointA cp =
+    case cp of
+        FreePoint _ a ->
+            a
+
+        SnapPoint _ _ a ->
+            a
 
 
 updateTool : Msg -> Model -> ( Model, Cmd Msg )
@@ -504,19 +587,41 @@ updateTool msg model =
     case msg of
         MouseDown mousePosition ->
             let
-                point =
+                mousePoint =
                     mousePositionToPoint model.canvasBoundingClientRect model.transform mousePosition
+
+                snapPoint =
+                    snapTo model.snapDistance mousePoint model.conductors (activeLayerSurfaceConductors model)
             in
             case model.tool of
                 CreateTrace points ->
-                    let
-                        t2 =
-                            points ++ [ pointToTracePoint point model.thickness ]
-                    in
-                    ( { model | tool = CreateTrace t2 }, Cmd.none )
+                    case snapPoint model.thickness of
+                        SnapPoint p c t ->
+                            -- TODO finalize trace here
+                            let
+                                newPoints =
+                                    points ++ [ SnapPoint p c t ]
+                            in
+                            if List.isEmpty points then
+                                ( { model | tool = CreateTrace newPoints }, Cmd.none )
+
+                            else
+                                -- TODO how do we merge nets?
+                                let
+                                    newModel =
+                                        addSurfaceConductor (constructionPointsToTrace newPoints) model
+                                in
+                                ( { newModel | tool = CreateTrace [] }, Cmd.none )
+
+                        FreePoint p t ->
+                            let
+                                t2 =
+                                    points ++ [ FreePoint p t ]
+                            in
+                            ( { model | tool = CreateTrace t2 }, Cmd.none )
 
                 CreateThroughPad ->
-                    ( addThroughConductor (ThroughPad point model.radius) model, Cmd.none )
+                    ( addThroughConductor (ThroughPad mousePoint model.radius) model, Cmd.none )
 
                 _ ->
                     ( model, Cmd.none )
@@ -553,16 +658,20 @@ updateRadius delta model =
         { model | radius = newZ }
 
 
+{-| Distance between two points
+-}
 distanceToPoint : Point -> Point -> Float
 distanceToPoint p1 p2 =
     sqrt ((p1.x - p2.x) ^ 2 + (p1.y - p2.y) ^ 2)
 
 
+{-| Find out the shortest distance from a given point to a conductor
+-}
 distanceToConductor : Point -> Conductor -> Maybe ( Float, Point, Conductor )
 distanceToConductor point conductor =
     conductorPoints conductor
         |> List.map (\conductorPoint -> ( distanceToPoint point conductorPoint, conductorPoint, conductor ))
-        |> List.sortBy (\( d, _, _ ) -> d)
+        |> List.sortBy (\( distance, _, _ ) -> distance)
         |> List.head
 
 
@@ -596,8 +705,8 @@ surfaceConductorPoints smt =
             points
 
 
-snapTo : Point -> List ThroughConductor -> List SurfaceConductor -> Maybe ( Conductor, Point )
-snapTo point thts smts =
+snapTo : Float -> Point -> List ThroughConductor -> List SurfaceConductor -> (a -> ConstructionPoint a)
+snapTo maxSnapDistance point thts smts =
     let
         closest =
             List.map Through thts
@@ -607,15 +716,15 @@ snapTo point thts smts =
                 |> List.head
     in
     case closest of
-        Just (snapDistance, snapPoint, snapConductor) ->
-            if snapDistance < 20 then
-                Just ( snapConductor, snapPoint )
+        Just ( conductorDistance, conductorPoint, conductor ) ->
+            if conductorDistance < maxSnapDistance then
+                SnapPoint conductorPoint conductor
 
             else
-                Nothing
+                FreePoint point
 
         Nothing ->
-            Nothing
+            FreePoint point
 
 
 
@@ -626,6 +735,11 @@ snapTo point thts smts =
 --
 --in
 --Nothing
+
+
+activeLayerSurfaceConductors : Model -> List SurfaceConductor
+activeLayerSurfaceConductors model =
+    Maybe.withDefault [] (Maybe.map (\l -> l.conductors) (List.head model.layers))
 
 
 conductorNet : Conductor -> Net
@@ -658,17 +772,15 @@ surfaceConductorNet smt =
             net
 
 
-pointNet : Point -> List ThroughConductor -> List SurfaceConductor -> Net
-pointNet point thts smts =
-    case snapTo point thts smts of
-        Just ( conductor, _ ) ->
-            conductorNet conductor
 
-        Nothing ->
-            AutoNet
-
-
-
+--pointNet : Model -> Point -> List ThroughConductor -> List SurfaceConductor -> Net
+--pointNet model point thts smts =
+--    case snapTo model.snapDistance point thts smts of
+--        SnapPoint _ c _ ->
+--            conductorNet c
+--
+--        FreePoint _ _ ->
+--            AutoNet 0 -- TODO?
 -- VIEW
 
 
@@ -695,9 +807,10 @@ view model =
                                 ]
                                 ([ Maybe.withDefault (text "") <| Maybe.map viewLayer <| List.head model.layers
                                  ]
-                                    ++ List.map viewThroughConductor model.conductors
                                     ++ [ viewTool model
                                        ]
+                                    ++ viewMaybeLayerSurfaceConductors (List.head model.layers)
+                                    ++ List.map viewThroughConductor model.conductors
                                 )
                             ]
                         , div [ id "right-menu" ]
@@ -786,22 +899,27 @@ mousePositionToPoint b t mousePosition =
 viewTool : Model -> Svg Msg
 viewTool model =
     case model.tool of
-        CreateTrace tracePoints ->
-            viewTrace model tracePoints
+        CreateTrace cps ->
+            viewTraceWithConstruction model (constructionPointsToTracePoints cps)
 
         CreateThroughPad ->
             let
                 point =
                     mousePositionToPoint model.canvasBoundingClientRect model.transform model.lastMousePosition
             in
-            viewThroughConductor <| ThroughPad point model.radius AutoNet
+            viewThroughConductor <| ThroughPad point model.radius (AutoNet 0)
 
         _ ->
             Svg.text ""
 
 
-viewTrace : Model -> List TracePoint -> Svg Msg
-viewTrace model points =
+viewTrace : List TracePoint -> Svg Msg
+viewTrace points =
+    Svg.g [] (viewTraceSegmented points)
+
+
+viewTraceWithConstruction : Model -> List TracePoint -> Svg Msg
+viewTraceWithConstruction model points =
     let
         constructionTrace =
             if model.focused then
@@ -856,18 +974,44 @@ viewConstructionTrace model tracePoints =
     case List.reverse tracePoints of
         last :: _ ->
             let
-                mousePoint = mousePositionToPoint model.canvasBoundingClientRect model.transform model.lastMousePosition
-                point = case snapTo mousePoint model.conductors (Maybe.withDefault [] (Maybe.map (\l -> l.conductors) (List.head model.layers))) of
-                    Just (_, snapPoint) ->
-                        snapPoint
-                    Nothing ->
-                        mousePoint
-                    --snapTo
+                mousePoint =
+                    mousePositionToPoint model.canvasBoundingClientRect model.transform model.lastMousePosition
+
+                point =
+                    case snapTo model.snapDistance mousePoint model.conductors (activeLayerSurfaceConductors model) model.thickness of
+                        SnapPoint p _ _ ->
+                            p
+
+                        FreePoint p _ ->
+                            p
             in
             pathFromPoints [ last, pointToTracePoint point model.thickness ]
 
         _ ->
             Svg.text ""
+
+
+viewMaybeLayerSurfaceConductors : Maybe LayerDefinition -> List (Svg Msg)
+viewMaybeLayerSurfaceConductors maybeLayer =
+    case maybeLayer of
+        Just layer ->
+            List.map viewSurfaceConductor layer.conductors
+
+        Nothing ->
+            []
+
+
+viewSurfaceConductor : SurfaceConductor -> Svg Msg
+viewSurfaceConductor surfaceConductor =
+    case surfaceConductor of
+        Trace tracePoints net ->
+            viewTrace tracePoints
+
+        SurfacePad point width net ->
+            Svg.text "SurfacePad"
+
+        Zone points net ->
+            Svg.text "ZONE"
 
 
 viewThroughConductor : ThroughConductor -> Svg Msg
