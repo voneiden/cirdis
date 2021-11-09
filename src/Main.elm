@@ -515,6 +515,69 @@ addSurfaceConductor surfaceConductor model =
             model
 
 
+updateConductorNet : Net -> Conductor -> Model -> Model
+updateConductorNet net conductor model =
+    case conductor of
+        Surface surfaceConductor ->
+            updateSurfaceConductorNet net surfaceConductor model
+
+        Through throughConductor ->
+            let
+                updatedThroughConductor =
+                    case throughConductor of
+                        ThroughPad point radius _ ->
+                            ThroughPad point radius net
+            in
+            { model
+                | conductors =
+                    List.map
+                        (\c ->
+                            if c == throughConductor then
+                                updatedThroughConductor
+
+                            else
+                                c
+                        )
+                        model.conductors
+            }
+
+
+updateSurfaceConductorNet : Net -> SurfaceConductor -> Model -> Model
+updateSurfaceConductorNet net surfaceConductor model =
+    case model.layers of
+        layer :: others ->
+            let
+                updatedSurfaceConductor =
+                    case surfaceConductor of
+                        Trace tracePoints _ ->
+                            Trace tracePoints net
+
+                        SurfacePad point width _ ->
+                            SurfacePad point width net
+
+                        Zone points _ ->
+                            Zone points net
+
+                updatedConductors =
+                    List.map
+                        (\c ->
+                            if c == surfaceConductor then
+                                updatedSurfaceConductor
+
+                            else
+                                c
+                        )
+                        layer.conductors
+
+                updatedLayer =
+                    { layer | conductors = updatedConductors }
+            in
+            { model | layers = updatedLayer :: others }
+
+        _ ->
+            model
+
+
 constructionPointToTracePoint : ConstructionPoint Thickness -> TracePoint
 constructionPointToTracePoint cp =
     { point = constructionPointPoint cp, thickness = constructionPointA cp }
@@ -525,10 +588,10 @@ constructionPointsToTracePoints cps =
     List.map constructionPointToTracePoint cps
 
 
-constructionPointsToTrace : List (ConstructionPoint Thickness) -> SurfaceConductor
-constructionPointsToTrace points =
+constructionPointsToTrace : List (ConstructionPoint Thickness) -> Net -> SurfaceConductor
+constructionPointsToTrace points net =
     -- todo net
-    Trace (constructionPointsToTracePoints points) (AutoNet 0)
+    Trace (constructionPointsToTracePoints points) net
 
 
 {-| Come up with some neat way to test if the conductor should connect to some existing net
@@ -597,7 +660,6 @@ updateTool msg model =
                 CreateTrace points ->
                     case snapPoint model.thickness of
                         SnapPoint p c t ->
-                            -- TODO finalize trace here
                             let
                                 newPoints =
                                     points ++ [ SnapPoint p c t ]
@@ -606,12 +668,28 @@ updateTool msg model =
                                 ( { model | tool = CreateTrace newPoints }, Cmd.none )
 
                             else
-                                -- TODO how do we merge nets?
                                 let
-                                    newModel =
-                                        addSurfaceConductor (constructionPointsToTrace newPoints) model
+                                    mergedNet =
+                                        mergeNets (constructionPointsToConductors newPoints)
                                 in
-                                ( { newModel | tool = CreateTrace [] }, Cmd.none )
+                                case mergedNet of
+                                    MergeOk net conductors ->
+                                        ( List.foldl (updateConductorNet net) model conductors
+                                            |> addSurfaceConductor (constructionPointsToTrace newPoints net)
+                                            |> resetTool
+                                        , Cmd.none
+                                        )
+
+                                    MergeConflict nets conductors ->
+                                        -- TODO show somekind of conflict resolution thing
+                                        ( resetTool model, Cmd.none )
+
+                                    MergeNothing ->
+                                        ( addSurfaceConductor (constructionPointsToTrace newPoints (AutoNet model.nextNetId)) model
+                                            |> resetTool
+                                            |> incrementNextNetId
+                                        , Cmd.none
+                                        )
 
                         FreePoint p t ->
                             let
@@ -636,6 +714,91 @@ updateTool msg model =
 
         _ ->
             ( model, Cmd.none )
+
+
+resetTool : Model -> Model
+resetTool model =
+    let
+        tool =
+            case model.tool of
+                SelectConductor _ ->
+                    SelectConductor Nothing
+
+                SelectNet _ ->
+                    SelectNet Nothing
+
+                CreateTrace _ ->
+                    CreateTrace []
+
+                CreateSurfacePad ->
+                    CreateSurfacePad
+
+                CreateThroughPad ->
+                    CreateThroughPad
+
+                CreateZone ->
+                    CreateZone
+    in
+    { model | tool = tool }
+
+
+incrementNextNetId : Model -> Model
+incrementNextNetId model =
+    { model | nextNetId = model.nextNetId + 1 }
+
+
+constructionPointToMaybeConductor : ConstructionPoint a -> Maybe Conductor
+constructionPointToMaybeConductor cp =
+    case cp of
+        FreePoint _ _ ->
+            Nothing
+
+        SnapPoint _ conductor _ ->
+            Just conductor
+
+
+constructionPointsToConductors : List (ConstructionPoint a) -> List Conductor
+constructionPointsToConductors cps =
+    List.filterMap constructionPointToMaybeConductor cps
+
+
+type MergeNet
+    = MergeOk Net (List Conductor)
+    | MergeConflict (List Net) (List Conductor)
+    | MergeNothing
+
+
+isCustomNet : Net -> Bool
+isCustomNet net =
+    case net of
+        CustomNet _ _ ->
+            True
+
+        _ ->
+            False
+
+
+mergeNets : List Conductor -> MergeNet
+mergeNets conductors =
+    let
+        nets =
+            List.map conductorNet conductors
+
+        ( customNets, autoNets ) =
+            List.partition isCustomNet nets
+    in
+    case ( customNets, autoNets ) of
+        ( [ customNet ], _ ) ->
+            MergeOk customNet conductors
+
+        ( [], autoNet :: _ ) ->
+            MergeOk autoNet conductors
+
+        ( _ :: _, _ ) ->
+            MergeConflict customNets conductors
+
+        ( [], [] ) ->
+            MergeNothing
 
 
 updateRadius : Float -> Model -> Model
