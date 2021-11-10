@@ -483,6 +483,29 @@ update msg model =
                 17 ->
                     ( { model | ctrl = True }, Cmd.none )
 
+                27 ->
+                    ( resetTool model, Cmd.none )
+
+                81 ->
+                    -- q
+                    ( { model | tool = SelectConductor Nothing }, Cmd.none )
+
+                87 ->
+                    -- w
+                    ( { model | tool = SelectNet Nothing }, Cmd.none )
+
+                65 ->
+                    -- a
+                    ( { model | tool = CreateThroughPad }, Cmd.none )
+
+                83 ->
+                    -- s
+                    ( { model | tool = CreateSurfacePad }, Cmd.none )
+
+                68 ->
+                    -- d
+                    ( { model | tool = CreateTrace [] }, Cmd.none )
+
                 _ ->
                     ( model, Cmd.none )
 
@@ -499,6 +522,20 @@ update msg model =
 
         SetTool tool ->
             ( { model | tool = tool }, Cmd.none )
+
+
+addSurfaceConductorAutoNet : (Net -> SurfaceConductor) -> Model -> Model
+addSurfaceConductorAutoNet toSurfaceConductor model =
+    case model.layers of
+        layer :: others ->
+            let
+                updatedLayer =
+                    { layer | conductors = toSurfaceConductor (AutoNet model.nextNetId) :: layer.conductors }
+            in
+            { model | layers = updatedLayer :: others, nextNetId = model.nextNetId + 1 }
+
+        _ ->
+            model
 
 
 addSurfaceConductor : SurfaceConductor -> Model -> Model
@@ -701,12 +738,18 @@ updateTool msg model =
                 CreateThroughPad ->
                     ( addThroughConductor (ThroughPad mousePoint model.radius) model, Cmd.none )
 
+                CreateSurfacePad ->
+                    ( addSurfaceConductorAutoNet (SurfacePad mousePoint (model.radius * 2)) model, Cmd.none )
+
                 _ ->
                     ( model, Cmd.none )
 
         MouseWheel delta ->
             case model.tool of
                 CreateThroughPad ->
+                    ( updateRadius delta model, Cmd.none )
+
+                CreateSurfacePad ->
                     ( updateRadius delta model, Cmd.none )
 
                 _ ->
@@ -1072,6 +1115,13 @@ viewTool model =
             in
             viewThroughConductor <| ThroughPad point model.radius (AutoNet 0)
 
+        CreateSurfacePad ->
+            let
+                point =
+                    mousePositionToPoint model.canvasBoundingClientRect model.transform model.lastMousePosition
+            in
+            viewSurfaceConductor <| SurfacePad point (model.radius * 2) (AutoNet 0)
+
         _ ->
             Svg.text ""
 
@@ -1171,7 +1221,17 @@ viewSurfaceConductor surfaceConductor =
             viewTrace tracePoints
 
         SurfacePad point width net ->
-            Svg.text "SurfacePad"
+            let
+                half =
+                    width / 2
+            in
+            Svg.rect
+                [ SvgA.x <| String.fromFloat (point.x - half)
+                , SvgA.y <| String.fromFloat (point.y - half)
+                , SvgA.width <| String.fromFloat width
+                , SvgA.height <| String.fromFloat width
+                ]
+                []
 
         Zone points net ->
             Svg.text "ZONE"
