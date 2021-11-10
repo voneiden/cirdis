@@ -475,15 +475,19 @@ update msg model =
         KeyDown key ->
             case key.keyCode of
                 86 ->
+                    -- v
                     ( { model | layers = cycle model.layers }, Cmd.none )
 
                 16 ->
+                    -- shift
                     ( { model | shift = True }, Cmd.none )
 
                 17 ->
+                    -- ctrl
                     ( { model | ctrl = True }, Cmd.none )
 
                 27 ->
+                    -- esc
                     ( resetTool model, Cmd.none )
 
                 81 ->
@@ -512,9 +516,11 @@ update msg model =
         KeyUp key ->
             case key.keyCode of
                 16 ->
+                    -- shift
                     ( { model | shift = False }, Cmd.none )
 
                 17 ->
+                    -- ctrl
                     ( { model | ctrl = False }, Cmd.none )
 
                 _ ->
