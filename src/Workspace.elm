@@ -22,6 +22,7 @@ type alias Model =
     , nextNetId : Int -- Running id for nets
     , snapDistance : Float
     , autoNetColor : String
+    , highlightNets : List Net
     }
 
 
@@ -39,6 +40,7 @@ defaultModel =
     , nextNetId = 1
     , snapDistance = 10
     , autoNetColor = ""
+    , highlightNets = []
     }
 
 
@@ -667,7 +669,7 @@ viewTraceWithConstruction model points =
     let
         constructionTrace =
             if model.focused then
-                [ viewConstructionTrace model points ]
+                viewConstructionTrace model points
 
             else
                 []
@@ -675,6 +677,40 @@ viewTraceWithConstruction model points =
     Svg.g [] <|
         viewTraceSegmented points
             ++ constructionTrace
+
+
+viewCrosshair : ConstructionPoint a -> Svg Msg
+viewCrosshair point =
+    let
+        length =
+            35
+
+        ( center, color ) =
+            case point of
+                SnapPoint p _ _ ->
+                    ( p, "lime" )
+
+                FreePoint p _ ->
+                    ( p, "red" )
+    in
+    Svg.g []
+        [ Svg.line
+            [ SvgA.x1 <| String.fromFloat <| center.x - length
+            , SvgA.x2 <| String.fromFloat <| center.x + length
+            , SvgA.y1 <| String.fromFloat <| center.y
+            , SvgA.y2 <| String.fromFloat <| center.y
+            , SvgA.stroke color
+            ]
+            []
+        , Svg.line
+            [ SvgA.x1 <| String.fromFloat <| center.x
+            , SvgA.x2 <| String.fromFloat <| center.x
+            , SvgA.y1 <| String.fromFloat <| center.y - length
+            , SvgA.y2 <| String.fromFloat <| center.y + length
+            , SvgA.stroke color
+            ]
+            []
+        ]
 
 
 viewTracePoints : List TracePoint -> Svg Msg
@@ -713,23 +749,28 @@ viewTraceSegmented tracePoints =
             [ Svg.text "" ]
 
 
-viewConstructionTrace : Model -> List TracePoint -> Svg Msg
+viewConstructionTrace : Model -> List TracePoint -> List (Svg Msg)
 viewConstructionTrace model tracePoints =
+    let
+        cp =
+            snapTo model.snapDistance model.cursor model.conductors (activeLayerSurfaceConductors model) model.thickness
+
+        point =
+            case cp of
+                SnapPoint p _ _ ->
+                    p
+
+                FreePoint p _ ->
+                    p
+    in
     case List.reverse tracePoints of
         last :: _ ->
-            let
-                point =
-                    case snapTo model.snapDistance model.cursor model.conductors (activeLayerSurfaceConductors model) model.thickness of
-                        SnapPoint p _ _ ->
-                            p
-
-                        FreePoint p _ ->
-                            p
-            in
-            viewTracePoints [ last, pointToTracePoint point model.thickness ]
+            [ viewTracePoints [ last, pointToTracePoint point model.thickness ]
+            , viewCrosshair cp
+            ]
 
         _ ->
-            Svg.text ""
+            [ viewCrosshair cp ]
 
 
 viewMaybeLayerSurfaceConductors : Maybe Layer -> List (Svg Msg)
