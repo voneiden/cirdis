@@ -4,5 +4,9 @@ import elmPlugin from 'vite-plugin-elm'
 export default defineConfig({
   // config options
   root: "./public/",
-  plugins: [elmPlugin()]
+  base: "/cirdis/",
+  plugins: [elmPlugin()],
+  build: {
+    outDir: "../docs/"
+  }
 })
