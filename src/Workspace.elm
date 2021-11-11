@@ -119,8 +119,22 @@ type alias Canvas =
 
 
 type Net
-    = AutoNet Int
+    = NoNet
+    | AutoNet Int
     | CustomNet String String
+
+
+netColor : Net -> String
+netColor net =
+    case net of
+        NoNet ->
+            "red"
+
+        AutoNet _ ->
+            "grey"
+
+        CustomNet _ c ->
+            c
 
 
 type Conductor
@@ -297,13 +311,33 @@ type Tool
 type MergeNet
     = MergeOk Net (List Conductor)
     | MergeConflict (List Net) (List Conductor)
-    | MergeNothing
+    | MergeNoNet (List Conductor)
 
 
 isCustomNet : Net -> Bool
 isCustomNet net =
     case net of
         CustomNet _ _ ->
+            True
+
+        _ ->
+            False
+
+
+isAutoNet : Net -> Bool
+isAutoNet net =
+    case net of
+        AutoNet _ ->
+            True
+
+        _ ->
+            False
+
+
+isNoNet : Net -> Bool
+isNoNet net =
+    case net of
+        NoNet ->
             True
 
         _ ->
@@ -317,7 +351,7 @@ mergeNets conductors =
             List.map conductorNet conductors
 
         ( customNets, autoNets ) =
-            List.partition isCustomNet nets
+            List.partition isCustomNet (List.filter (not << isNoNet) nets)
     in
     case ( customNets, autoNets ) of
         ( [ customNet ], _ ) ->
@@ -330,7 +364,7 @@ mergeNets conductors =
             MergeConflict customNets conductors
 
         ( [], [] ) ->
-            MergeNothing
+            MergeNoNet conductors
 
 
 
@@ -393,8 +427,13 @@ update msg model =
                                         -- TODO show somekind of conflict resolution thing
                                         ( resetTool model, Cmd.none )
 
-                                    MergeNothing ->
-                                        ( addSurfaceConductor (constructionPointsToTrace newPoints (AutoNet model.nextNetId)) model
+                                    MergeNoNet conductors ->
+                                        let
+                                            net =
+                                                AutoNet model.nextNetId
+                                        in
+                                        ( List.foldl (updateConductorNet net) model conductors
+                                            |> addSurfaceConductor (constructionPointsToTrace newPoints net)
                                             |> resetTool
                                             |> incrementNextNetId
                                         , Cmd.none
@@ -506,9 +545,9 @@ incrementNextNetId model =
 
 addThroughConductor : (Net -> ThroughConductor) -> Model -> Model
 addThroughConductor toConductor model =
-    case toConductor (AutoNet 0) of
+    case toConductor NoNet of
         ThroughPad point radius _ ->
-            { model | nextNetId = model.nextNetId + 1, conductors = toConductor (AutoNet model.nextNetId) :: model.conductors }
+            { model | nextNetId = model.nextNetId + 1, conductors = toConductor NoNet :: model.conductors }
 
 
 addSurfaceConductorAutoNet : (Net -> SurfaceConductor) -> Model -> Model
@@ -517,7 +556,7 @@ addSurfaceConductorAutoNet toSurfaceConductor model =
         layer :: others ->
             let
                 updatedLayer =
-                    { layer | conductors = toSurfaceConductor (AutoNet model.nextNetId) :: layer.conductors }
+                    { layer | conductors = toSurfaceConductor NoNet :: layer.conductors }
             in
             { model | layers = updatedLayer :: others, nextNetId = model.nextNetId + 1 }
 
@@ -615,10 +654,10 @@ viewTool model =
             viewTraceWithConstruction model (constructionPointsToTracePoints cps)
 
         CreateThroughPad ->
-            viewThroughConductor <| ThroughPad model.cursor model.radius (AutoNet 0)
+            viewThroughConductor <| ThroughPad model.cursor model.radius NoNet
 
         CreateSurfacePad ->
-            viewSurfaceConductor <| SurfacePad model.cursor (model.radius * 2) (AutoNet 0)
+            viewSurfaceConductor <| SurfacePad model.cursor (model.radius * 2) NoNet
 
         _ ->
             Svg.text ""
@@ -627,11 +666,12 @@ viewTool model =
 viewThroughConductor : ThroughConductor -> Svg Msg
 viewThroughConductor throughConductor =
     case throughConductor of
-        ThroughPad point radius netId ->
+        ThroughPad point radius net ->
             Svg.circle
                 [ SvgA.cx <| String.fromFloat point.x
                 , SvgA.cy <| String.fromFloat point.y
                 , SvgA.r <| String.fromFloat radius
+                , SvgA.fill (netColor net)
                 ]
                 []
 
@@ -640,7 +680,7 @@ viewSurfaceConductor : SurfaceConductor -> Svg Msg
 viewSurfaceConductor surfaceConductor =
     case surfaceConductor of
         Trace tracePoints net ->
-            viewTrace tracePoints
+            viewTrace (netColor net) tracePoints
 
         SurfacePad point width net ->
             let
@@ -652,6 +692,7 @@ viewSurfaceConductor surfaceConductor =
                 , SvgA.y <| String.fromFloat (point.y - half)
                 , SvgA.width <| String.fromFloat width
                 , SvgA.height <| String.fromFloat width
+                , SvgA.fill <| netColor net
                 ]
                 []
 
@@ -659,9 +700,9 @@ viewSurfaceConductor surfaceConductor =
             Svg.text "ZONE"
 
 
-viewTrace : List TracePoint -> Svg Msg
-viewTrace points =
-    Svg.g [] (viewTraceSegmented points)
+viewTrace : String -> List TracePoint -> Svg Msg
+viewTrace color points =
+    Svg.g [] (viewTraceSegmented color points)
 
 
 viewTraceWithConstruction : Model -> List TracePoint -> Svg Msg
@@ -675,7 +716,7 @@ viewTraceWithConstruction model points =
                 []
     in
     Svg.g [] <|
-        viewTraceSegmented points
+        viewTraceSegmented (netColor NoNet) points
             ++ constructionTrace
 
 
@@ -713,8 +754,8 @@ viewCrosshair point =
         ]
 
 
-viewTracePoints : List TracePoint -> Svg Msg
-viewTracePoints tracePoints =
+viewTracePoints : String -> List TracePoint -> Svg Msg
+viewTracePoints color tracePoints =
     case tracePoints of
         start :: rest ->
             let
@@ -727,7 +768,7 @@ viewTracePoints tracePoints =
             Svg.path
                 [ d
                 , SvgA.fill "none"
-                , SvgA.stroke "red"
+                , SvgA.stroke color
                 , SvgA.strokeWidth (String.fromFloat start.thickness)
                 , SvgA.strokeLinecap "round"
                 ]
@@ -737,13 +778,13 @@ viewTracePoints tracePoints =
             Svg.text ""
 
 
-viewTraceSegmented : List TracePoint -> List (Svg Msg)
-viewTraceSegmented tracePoints =
+viewTraceSegmented : String -> List TracePoint -> List (Svg Msg)
+viewTraceSegmented color tracePoints =
     -- TODO add some intelligence here and merge lines that have the same thickness
     -- use takeWhile here
     case tracePoints of
         start :: end :: rest ->
-            viewTracePoints [ start, end ] :: viewTraceSegmented (end :: rest)
+            viewTracePoints color [ start, end ] :: viewTraceSegmented color (end :: rest)
 
         _ ->
             [ Svg.text "" ]
@@ -765,7 +806,7 @@ viewConstructionTrace model tracePoints =
     in
     case List.reverse tracePoints of
         last :: _ ->
-            [ viewTracePoints [ last, pointToTracePoint point model.thickness ]
+            [ viewTracePoints (netColor NoNet) [ last, pointToTracePoint point model.thickness ]
             , viewCrosshair cp
             ]
 
