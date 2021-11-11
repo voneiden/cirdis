@@ -4,6 +4,7 @@ import Base64
 import Browser exposing (Document)
 import Browser.Events exposing (onKeyDown, onKeyUp, onMouseUp)
 import Bytes exposing (Bytes)
+import Common exposing (Point)
 import Dict exposing (Dict)
 import File exposing (File)
 import File.Select as Select
@@ -12,12 +13,12 @@ import Html.Attributes exposing (class, id)
 import Html.Events exposing (onClick, onMouseEnter, onMouseLeave)
 import Html.Lazy exposing (lazy)
 import Json.Decode as Decode exposing (Decoder)
-import RemoteData exposing (RemoteData)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
 import Svg.Events as SvgE
 import Svg.Lazy as Svg
 import Task
+import Workspace
 
 
 
@@ -30,52 +31,6 @@ import Task
 -- copper pours
 -- undo/redo
 -- snapping can be optimized with some kind of dict mapping to pixel regions
-
-
-port mouseDrag : (MousePosition -> msg) -> Sub msg
-
-
-port startDrag : () -> Cmd msg
-
-
-port wheel : (Float -> msg) -> Sub msg
-
-
-port startWheel : () -> Cmd msg
-
-
-port endWheel : () -> Cmd msg
-
-
-port resize : (BoundingClientRect -> msg) -> Sub msg
-
-
-port canvasSize : () -> Cmd msg
-
-
-port checkImages : () -> Cmd msg
-
-
-port imageInformation : (List ImageInformation -> msg) -> Sub msg
-
-
-type alias BoundingClientRect =
-    { x : Float
-    , y : Float
-    , width : Float
-    , height : Float
-    , top : Float
-    }
-
-
-type alias ImageInformation =
-    { layer : String
-    , height : Float
-    , width : Float
-    }
-
-
-
 -- MAIN
 
 
@@ -94,205 +49,30 @@ main =
 -- The app needs to scale the svg with dom changes, but for now lets hardcode
 
 
-type LayerError
-    = RasterB64EncodeFailed
-
-
-type alias LayerData =
-    RemoteData LayerError LayerDefinition
-
-
 type alias Model =
-    { loadLayerStatus : LayerData
-    , layers : List LayerDefinition
-    , transform : Transform
-    , focused : Bool
+    { layers : Dict Int LayerData
     , dragging : Bool
     , shift : Bool
     , ctrl : Bool
     , lastMousePosition : MousePosition
     , canvasBoundingClientRect : BoundingClientRect
-    , trace : List Point
-    , radius : Float
-    , thickness : Float
-    , tool : Tool
-    , conductors : List ThroughConductor
-    , nextNetId : Int -- Running id for nets
-    , netInfo : Dict String NetInfo
-    , snapDistance : Float
-    , autoNetColor : String
+    , workspace : Workspace.Model
     }
 
 
-init : () -> ( Model, Cmd Msg )
-init _ =
-    ( Model RemoteData.NotAsked
-        []
-        defaultTransform
-        False
-        False
-        False
-        False
-        defaultMousePosition
-        defaultBoundingClientRect
-        []
-        5
-        10
-        (SelectConductor Nothing)
-        []
-        1
-        Dict.empty
-        20
-        "#aaaaaa"
-    , canvasSize ()
-    )
-
-
-type alias Point =
-    { x : Float
-    , y : Float
+type alias LayerData =
+    { title : String
+    , mimeType : String
+    , b64Data : String
     }
 
 
-
--- traces, zones, nets, pads, components
--- components contain pads
--- nets contain traces, zones and pads
-
-
-type Tool
-    = SelectConductor (Maybe Conductor)
-    | SelectNet (Maybe Net)
-    | CreateTrace (List (ConstructionPoint Thickness))
-    | CreateSurfacePad
-    | CreateThroughPad
-    | CreateZone
-
-
-type alias NetInfo =
-    { color : String
+type alias MousePosition =
+    { timeStamp : Float
+    , offsetX : Float
+    , offsetY : Float
+    , button : Int
     }
-
-
-type Net
-    = AutoNet Int
-    | CustomNet String String
-
-
-
---type alias Component =
---    { name : String
---    , pads : List Conductor
---    }
-
-
-type Conductor
-    = Surface SurfaceConductor
-    | Through ThroughConductor
-
-
-type SurfaceConductor
-    = Trace (List TracePoint) Net
-    | SurfacePad Point Width Net
-    | Zone (List Point) Net
-
-
-type ThroughConductor
-    = ThroughPad Point Radius Net
-
-
-type alias NetId =
-    Int
-
-
-type alias Radius =
-    Float
-
-
-type alias Thickness =
-    Float
-
-
-type alias Width =
-    Float
-
-
-type alias TracePoint =
-    { point : Point
-    , thickness : Float
-    }
-
-
-
---type alias TraceData a =
---    { a | thickness : Float}
-
-
-pointToTracePoint : Point -> Float -> TracePoint
-pointToTracePoint point thickness =
-    { point = point, thickness = thickness }
-
-
-type alias Transform =
-    { x : Float
-    , y : Float
-    , z : Float
-    }
-
-
-defaultTransform : Transform
-defaultTransform =
-    { x = 0, y = 0, z = 1 }
-
-
-{-| Do panning translations to the transformation.
-
-Panning should happen with the same speed as the mouse
-moves on the screen, therefore the magnitude is tied to the
-zoom multiplier.
-
--}
-translateTransform : BoundingClientRect -> Transform -> Float -> Float -> Transform
-translateTransform r t x y =
-    { t | x = t.x + x * t.z, y = t.y + y * t.z }
-
-
-{-| Apply zoom to transform. While it accepts a float,
-actually it only cares about the sign. This is due to
-differences with browser wheel event delta's.
--}
-zoomTransform : Transform -> Float -> Transform
-zoomTransform t z =
-    let
-        multiplier =
-            1.25
-
-        newZ =
-            if z > 0 then
-                t.z * multiplier
-
-            else
-                t.z / multiplier
-    in
-    if newZ > 0.9 && newZ < 1.1 then
-        { t | z = 1 }
-
-    else
-        { t | z = newZ }
-
-
-{-| Convert a Transform into a SVG viewBox attribute value
--}
-transformToViewBox : BoundingClientRect -> Transform -> String
-transformToViewBox r t =
-    let
-        width =
-            r.width * t.z
-
-        height =
-            r.height * t.z
-    in
-    String.join " " [ String.fromFloat <| t.x - (width / 2), String.fromFloat <| t.y - (height / 2), String.fromFloat <| width, String.fromFloat <| height ]
 
 
 defaultMousePosition : MousePosition
@@ -300,29 +80,48 @@ defaultMousePosition =
     { timeStamp = 0, offsetX = 0, offsetY = 0, button = 0 }
 
 
+mousePositionToPoint : BoundingClientRect -> Workspace.Transform -> MousePosition -> Point
+mousePositionToPoint b t mousePosition =
+    let
+        deltaX =
+            mousePosition.offsetX - b.width / 2
+
+        deltaY =
+            mousePosition.offsetY - b.height / 2
+    in
+    { x = t.x + deltaX * t.z, y = t.y + deltaY * t.z }
+
+
+type alias BoundingClientRect =
+    { x : Float
+    , y : Float
+    , width : Float
+    , height : Float
+    , top : Float
+    }
+
+
 defaultBoundingClientRect : BoundingClientRect
 defaultBoundingClientRect =
     { x = 0, y = 0, width = 500, height = 500, top = 0 }
 
 
+init : () -> ( Model, Cmd Msg )
+init _ =
+    ( { layers = Dict.empty
+      , dragging = False
+      , shift = False
+      , ctrl = False
+      , lastMousePosition = MousePosition 0 0 0 0
+      , canvasBoundingClientRect = BoundingClientRect 0 0 0 0 0
+      , workspace = Workspace.defaultModel
+      }
+    , canvasSize ()
+    )
+
+
 
 -- UPDATE
-
-
-type alias LayerDefinition =
-    { title : String
-    , mimeType : String
-    , b64Data : String
-    , opacity : Int
-    , conductors : List SurfaceConductor
-    }
-
-
-type alias FileInfo =
-    { name : String
-    , mime : String
-    , data : Bytes
-    }
 
 
 type Msg
@@ -340,22 +139,38 @@ type Msg
     | GotImageInformation (List ImageInformation)
     | KeyDown Key
     | KeyUp Key
-    | SetTool Tool
+    | Workspace Workspace.Msg
 
 
-{-| Take the first element of a list and move it as the last element
+type alias FileInfo =
+    { name : String
+    , mime : String
+    , data : Bytes
+    }
 
-If you wanna go the other way, use List.reverse I guess
 
--}
-cycle : List a -> List a
-cycle list =
-    case list of
-        a :: b ->
-            b ++ [ a ]
+chainUpdate : (Model -> ( Model, Cmd Msg )) -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+chainUpdate toNew ( model, cmd ) =
+    let
+        ( newModel, newCmd ) =
+            toNew model
+    in
+    ( newModel, Cmd.batch [ cmd, newCmd ] )
 
-        [] ->
-            []
+
+fromWorkspaceUpdate : ( Workspace.Model, Cmd Workspace.Msg ) -> Model -> ( Model, Cmd Msg )
+fromWorkspaceUpdate ( wsModel, wsCmd ) model =
+    ( { model | workspace = wsModel }, Cmd.map (\wsMsg -> Workspace wsMsg) wsCmd )
+
+
+fromWorkspaceView : Html Workspace.Msg -> Html Msg
+fromWorkspaceView html =
+    Html.map (\msg -> Workspace msg) html
+
+
+fromWorkspaceSvg : Svg Workspace.Msg -> Svg Msg
+fromWorkspaceSvg svg =
+    Svg.map (\msg -> Workspace msg) svg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -375,32 +190,44 @@ update msg model =
             case Base64.fromBytes fileInfo.data of
                 Just b64 ->
                     let
+                        layerId =
+                            (+) 1 <| Maybe.withDefault 0 <| List.maximum <| Dict.keys model.layers
+
+                        layerDefinition : LayerData
                         layerDefinition =
                             { title = fileInfo.name
                             , mimeType = fileInfo.mime
                             , b64Data = b64
-                            , opacity = 100
-                            , conductors = []
                             }
                     in
-                    ( { model | layers = layerDefinition :: model.layers }
-                    , Cmd.batch [ canvasSize (), checkImages () ]
-                    )
+                    fromWorkspaceUpdate (Workspace.update (Workspace.AddLayer layerId) model.workspace) model
+                        |> chainUpdate
+                            (\m ->
+                                ( { m | layers = Dict.insert layerId layerDefinition model.layers }
+                                , Cmd.batch [ canvasSize (), checkImages () ]
+                                )
+                            )
 
                 Nothing ->
                     ( model, Cmd.none )
 
         RemoveLayer index ->
-            ( { model | layers = List.take index model.layers ++ List.drop (index + 1) model.layers }, Cmd.none )
+            -- todo needs refactoring
+            ( model, Cmd.none )
 
+        --( { model | layers = List.take index model.layers ++ List.drop (index + 1) model.layers }, Cmd.none )
         MouseDown mousePosition ->
             -- Middle mouse button starts drag
+            let
+                cursor =
+                    mousePositionToPoint model.canvasBoundingClientRect model.workspace.transform mousePosition
+            in
             case mousePosition.button of
                 1 ->
-                    ( { model | lastMousePosition = mousePosition, dragging = True }, Cmd.none )
+                    ( { model | dragging = True }, Cmd.none )
 
                 0 ->
-                    updateTool msg model
+                    fromWorkspaceUpdate (Workspace.update (Workspace.LeftClick cursor) model.workspace) model
 
                 _ ->
                     ( model, Cmd.none )
@@ -414,35 +241,29 @@ update msg model =
                     ( model, Cmd.none )
 
         MouseMove mousePosition ->
-            if model.dragging then
-                let
-                    dx =
-                        model.lastMousePosition.offsetX - mousePosition.offsetX
+            let
+                cursor =
+                    mousePositionToPoint model.canvasBoundingClientRect model.workspace.transform mousePosition
 
-                    dy =
-                        model.lastMousePosition.offsetY - mousePosition.offsetY
-                in
-                ( { model | lastMousePosition = mousePosition, transform = translateTransform model.canvasBoundingClientRect model.transform dx dy }, Cmd.none )
+                dx =
+                    model.lastMousePosition.offsetX - mousePosition.offsetX
 
-            else
-                ( { model | lastMousePosition = mousePosition }, Cmd.none )
+                dy =
+                    model.lastMousePosition.offsetY - mousePosition.offsetY
+            in
+            fromWorkspaceUpdate (Workspace.update (Workspace.SetCursor cursor ( dx, dy ) model.dragging) model.workspace) model
+                |> chainUpdate (\m -> ( { m | lastMousePosition = mousePosition }, Cmd.none ))
 
         MouseOver ->
-            ( { model | focused = True }, startWheel () )
+            fromWorkspaceUpdate (Workspace.update Workspace.Focus model.workspace) model
+                |> chainUpdate (\m -> ( m, startWheel () ))
 
         MouseOut ->
-            ( { model | focused = False }, endWheel () )
+            fromWorkspaceUpdate (Workspace.update Workspace.Unfocus model.workspace) model
+                |> chainUpdate (\m -> ( m, endWheel () ))
 
         MouseWheel delta ->
-            case ( model.shift, model.ctrl ) of
-                ( False, False ) ->
-                    ( { model | transform = zoomTransform model.transform delta }, Cmd.none )
-
-                ( True, False ) ->
-                    updateTool msg model
-
-                _ ->
-                    ( model, Cmd.none )
+            fromWorkspaceUpdate (Workspace.update (Workspace.ZoomDelta delta model.shift) model.workspace) model
 
         Resize boundingClientRect ->
             -- TODO store this somewhere
@@ -458,16 +279,14 @@ update msg model =
 
                         heightRatio =
                             info.height / model.canvasBoundingClientRect.height
-                    in
-                    ( { model
-                        | transform =
+
+                        transform =
                             { x = info.width / 2
                             , y = info.height / 2
                             , z = max widthRatio heightRatio + 0.1
                             }
-                      }
-                    , Cmd.none
-                    )
+                    in
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTransform transform) model.workspace) model
 
                 _ ->
                     ( model, Cmd.none )
@@ -476,7 +295,7 @@ update msg model =
             case key.keyCode of
                 86 ->
                     -- v
-                    ( { model | layers = cycle model.layers }, Cmd.none )
+                    fromWorkspaceUpdate (Workspace.update Workspace.CycleLayers model.workspace) model
 
                 16 ->
                     -- shift
@@ -488,27 +307,27 @@ update msg model =
 
                 27 ->
                     -- esc
-                    ( resetTool model, Cmd.none )
+                    fromWorkspaceUpdate (Workspace.update Workspace.ResetTool model.workspace) model
 
                 81 ->
                     -- q
-                    ( { model | tool = SelectConductor Nothing }, Cmd.none )
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool (Workspace.SelectConductor Nothing)) model.workspace) model
 
                 87 ->
                     -- w
-                    ( { model | tool = SelectNet Nothing }, Cmd.none )
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool (Workspace.SelectNet Nothing)) model.workspace) model
 
                 65 ->
                     -- a
-                    ( { model | tool = CreateThroughPad }, Cmd.none )
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool Workspace.CreateThroughPad) model.workspace) model
 
                 83 ->
                     -- s
-                    ( { model | tool = CreateSurfacePad }, Cmd.none )
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool Workspace.CreateSurfacePad) model.workspace) model
 
                 68 ->
                     -- d
-                    ( { model | tool = CreateTrace [] }, Cmd.none )
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool (Workspace.CreateTrace [])) model.workspace) model
 
                 _ ->
                     ( model, Cmd.none )
@@ -526,473 +345,11 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        SetTool tool ->
-            ( { model | tool = tool }, Cmd.none )
+        Workspace wsMsg ->
+            fromWorkspaceUpdate (Workspace.update wsMsg model.workspace) model
 
 
-addSurfaceConductorAutoNet : (Net -> SurfaceConductor) -> Model -> Model
-addSurfaceConductorAutoNet toSurfaceConductor model =
-    case model.layers of
-        layer :: others ->
-            let
-                updatedLayer =
-                    { layer | conductors = toSurfaceConductor (AutoNet model.nextNetId) :: layer.conductors }
-            in
-            { model | layers = updatedLayer :: others, nextNetId = model.nextNetId + 1 }
 
-        _ ->
-            model
-
-
-addSurfaceConductor : SurfaceConductor -> Model -> Model
-addSurfaceConductor surfaceConductor model =
-    case model.layers of
-        layer :: others ->
-            let
-                updatedLayer =
-                    { layer | conductors = surfaceConductor :: layer.conductors }
-            in
-            { model | layers = updatedLayer :: others }
-
-        _ ->
-            model
-
-
-updateConductorNet : Net -> Conductor -> Model -> Model
-updateConductorNet net conductor model =
-    case conductor of
-        Surface surfaceConductor ->
-            updateSurfaceConductorNet net surfaceConductor model
-
-        Through throughConductor ->
-            let
-                updatedThroughConductor =
-                    case throughConductor of
-                        ThroughPad point radius _ ->
-                            ThroughPad point radius net
-            in
-            { model
-                | conductors =
-                    List.map
-                        (\c ->
-                            if c == throughConductor then
-                                updatedThroughConductor
-
-                            else
-                                c
-                        )
-                        model.conductors
-            }
-
-
-updateSurfaceConductorNet : Net -> SurfaceConductor -> Model -> Model
-updateSurfaceConductorNet net surfaceConductor model =
-    case model.layers of
-        layer :: others ->
-            let
-                updatedSurfaceConductor =
-                    case surfaceConductor of
-                        Trace tracePoints _ ->
-                            Trace tracePoints net
-
-                        SurfacePad point width _ ->
-                            SurfacePad point width net
-
-                        Zone points _ ->
-                            Zone points net
-
-                updatedConductors =
-                    List.map
-                        (\c ->
-                            if c == surfaceConductor then
-                                updatedSurfaceConductor
-
-                            else
-                                c
-                        )
-                        layer.conductors
-
-                updatedLayer =
-                    { layer | conductors = updatedConductors }
-            in
-            { model | layers = updatedLayer :: others }
-
-        _ ->
-            model
-
-
-constructionPointToTracePoint : ConstructionPoint Thickness -> TracePoint
-constructionPointToTracePoint cp =
-    { point = constructionPointPoint cp, thickness = constructionPointA cp }
-
-
-constructionPointsToTracePoints : List (ConstructionPoint Thickness) -> List TracePoint
-constructionPointsToTracePoints cps =
-    List.map constructionPointToTracePoint cps
-
-
-constructionPointsToTrace : List (ConstructionPoint Thickness) -> Net -> SurfaceConductor
-constructionPointsToTrace points net =
-    -- todo net
-    Trace (constructionPointsToTracePoints points) net
-
-
-{-| Come up with some neat way to test if the conductor should connect to some existing net
--}
-
-
-
--- TODO some kind of netsolver that can also check for broken nets and split the data appropriately
--- TODO kinda wanna check for collisions too!
-
-
-addThroughConductor : (Net -> ThroughConductor) -> Model -> Model
-addThroughConductor toConductor model =
-    case toConductor (AutoNet 0) of
-        ThroughPad point radius _ ->
-            { model | nextNetId = model.nextNetId + 1, conductors = toConductor (AutoNet model.nextNetId) :: model.conductors }
-
-
-type ConstructionPoint a
-    = FreePoint Point a
-    | SnapPoint Point Conductor a
-
-
-constructionPointPoint : ConstructionPoint a -> Point
-constructionPointPoint sp =
-    case sp of
-        FreePoint p _ ->
-            p
-
-        SnapPoint p _ _ ->
-            p
-
-
-constructionPointConductor : ConstructionPoint a -> Maybe Conductor
-constructionPointConductor sp =
-    case sp of
-        FreePoint p _ ->
-            Nothing
-
-        SnapPoint _ c _ ->
-            Just c
-
-
-constructionPointA : ConstructionPoint a -> a
-constructionPointA cp =
-    case cp of
-        FreePoint _ a ->
-            a
-
-        SnapPoint _ _ a ->
-            a
-
-
-updateTool : Msg -> Model -> ( Model, Cmd Msg )
-updateTool msg model =
-    case msg of
-        MouseDown mousePosition ->
-            let
-                mousePoint =
-                    mousePositionToPoint model.canvasBoundingClientRect model.transform mousePosition
-
-                snapPoint =
-                    snapTo model.snapDistance mousePoint model.conductors (activeLayerSurfaceConductors model)
-            in
-            case model.tool of
-                CreateTrace points ->
-                    case snapPoint model.thickness of
-                        SnapPoint p c t ->
-                            let
-                                newPoints =
-                                    points ++ [ SnapPoint p c t ]
-                            in
-                            if List.isEmpty points then
-                                ( { model | tool = CreateTrace newPoints }, Cmd.none )
-
-                            else
-                                let
-                                    mergedNet =
-                                        mergeNets (constructionPointsToConductors newPoints)
-                                in
-                                case mergedNet of
-                                    MergeOk net conductors ->
-                                        ( List.foldl (updateConductorNet net) model conductors
-                                            |> addSurfaceConductor (constructionPointsToTrace newPoints net)
-                                            |> resetTool
-                                        , Cmd.none
-                                        )
-
-                                    MergeConflict nets conductors ->
-                                        -- TODO show somekind of conflict resolution thing
-                                        ( resetTool model, Cmd.none )
-
-                                    MergeNothing ->
-                                        ( addSurfaceConductor (constructionPointsToTrace newPoints (AutoNet model.nextNetId)) model
-                                            |> resetTool
-                                            |> incrementNextNetId
-                                        , Cmd.none
-                                        )
-
-                        FreePoint p t ->
-                            let
-                                t2 =
-                                    points ++ [ FreePoint p t ]
-                            in
-                            ( { model | tool = CreateTrace t2 }, Cmd.none )
-
-                CreateThroughPad ->
-                    ( addThroughConductor (ThroughPad mousePoint model.radius) model, Cmd.none )
-
-                CreateSurfacePad ->
-                    ( addSurfaceConductorAutoNet (SurfacePad mousePoint (model.radius * 2)) model, Cmd.none )
-
-                _ ->
-                    ( model, Cmd.none )
-
-        MouseWheel delta ->
-            case model.tool of
-                CreateThroughPad ->
-                    ( updateRadius delta model, Cmd.none )
-
-                CreateSurfacePad ->
-                    ( updateRadius delta model, Cmd.none )
-
-                _ ->
-                    ( model, Cmd.none )
-
-        _ ->
-            ( model, Cmd.none )
-
-
-resetTool : Model -> Model
-resetTool model =
-    let
-        tool =
-            case model.tool of
-                SelectConductor _ ->
-                    SelectConductor Nothing
-
-                SelectNet _ ->
-                    SelectNet Nothing
-
-                CreateTrace _ ->
-                    CreateTrace []
-
-                CreateSurfacePad ->
-                    CreateSurfacePad
-
-                CreateThroughPad ->
-                    CreateThroughPad
-
-                CreateZone ->
-                    CreateZone
-    in
-    { model | tool = tool }
-
-
-incrementNextNetId : Model -> Model
-incrementNextNetId model =
-    { model | nextNetId = model.nextNetId + 1 }
-
-
-constructionPointToMaybeConductor : ConstructionPoint a -> Maybe Conductor
-constructionPointToMaybeConductor cp =
-    case cp of
-        FreePoint _ _ ->
-            Nothing
-
-        SnapPoint _ conductor _ ->
-            Just conductor
-
-
-constructionPointsToConductors : List (ConstructionPoint a) -> List Conductor
-constructionPointsToConductors cps =
-    List.filterMap constructionPointToMaybeConductor cps
-
-
-type MergeNet
-    = MergeOk Net (List Conductor)
-    | MergeConflict (List Net) (List Conductor)
-    | MergeNothing
-
-
-isCustomNet : Net -> Bool
-isCustomNet net =
-    case net of
-        CustomNet _ _ ->
-            True
-
-        _ ->
-            False
-
-
-mergeNets : List Conductor -> MergeNet
-mergeNets conductors =
-    let
-        nets =
-            List.map conductorNet conductors
-
-        ( customNets, autoNets ) =
-            List.partition isCustomNet nets
-    in
-    case ( customNets, autoNets ) of
-        ( [ customNet ], _ ) ->
-            MergeOk customNet conductors
-
-        ( [], autoNet :: _ ) ->
-            MergeOk autoNet conductors
-
-        ( _ :: _, _ ) ->
-            MergeConflict customNets conductors
-
-        ( [], [] ) ->
-            MergeNothing
-
-
-updateRadius : Float -> Model -> Model
-updateRadius delta model =
-    let
-        multiplier =
-            1.25
-
-        newZ =
-            if delta < 0 then
-                model.radius * multiplier
-
-            else
-                model.radius / multiplier
-    in
-    if newZ > 0.9 && newZ < 1.1 then
-        { model | radius = 1 }
-
-    else
-        { model | radius = newZ }
-
-
-{-| Distance between two points
--}
-distanceToPoint : Point -> Point -> Float
-distanceToPoint p1 p2 =
-    sqrt ((p1.x - p2.x) ^ 2 + (p1.y - p2.y) ^ 2)
-
-
-{-| Find out the shortest distance from a given point to a conductor
--}
-distanceToConductor : Point -> Conductor -> Maybe ( Float, Point, Conductor )
-distanceToConductor point conductor =
-    conductorPoints conductor
-        |> List.map (\conductorPoint -> ( distanceToPoint point conductorPoint, conductorPoint, conductor ))
-        |> List.sortBy (\( distance, _, _ ) -> distance)
-        |> List.head
-
-
-conductorPoints : Conductor -> List Point
-conductorPoints conductor =
-    case conductor of
-        Through tht ->
-            throughConductorPoints tht
-
-        Surface smt ->
-            surfaceConductorPoints smt
-
-
-throughConductorPoints : ThroughConductor -> List Point
-throughConductorPoints tht =
-    case tht of
-        ThroughPad point _ _ ->
-            [ point ]
-
-
-surfaceConductorPoints : SurfaceConductor -> List Point
-surfaceConductorPoints smt =
-    case smt of
-        Trace tracePoints _ ->
-            List.map .point tracePoints
-
-        SurfacePad point _ _ ->
-            [ point ]
-
-        Zone points _ ->
-            points
-
-
-snapTo : Float -> Point -> List ThroughConductor -> List SurfaceConductor -> (a -> ConstructionPoint a)
-snapTo maxSnapDistance point thts smts =
-    let
-        closest =
-            List.map Through thts
-                ++ List.map Surface smts
-                |> List.filterMap (distanceToConductor point)
-                |> List.sortBy (\( d, _, _ ) -> d)
-                |> List.head
-    in
-    case closest of
-        Just ( conductorDistance, conductorPoint, conductor ) ->
-            if conductorDistance < maxSnapDistance then
-                SnapPoint conductorPoint conductor
-
-            else
-                FreePoint point
-
-        Nothing ->
-            FreePoint point
-
-
-
---let
---    distances =
---        List.sortBy (\( distance, _ ) -> distance) <|
---            List.map (\c -> ( distanceToConductor point c, c )) <|
---
---in
---Nothing
-
-
-activeLayerSurfaceConductors : Model -> List SurfaceConductor
-activeLayerSurfaceConductors model =
-    Maybe.withDefault [] (Maybe.map (\l -> l.conductors) (List.head model.layers))
-
-
-conductorNet : Conductor -> Net
-conductorNet conductor =
-    case conductor of
-        Through tht ->
-            throughConductorNet tht
-
-        Surface smt ->
-            surfaceConductorNet smt
-
-
-throughConductorNet : ThroughConductor -> Net
-throughConductorNet tht =
-    case tht of
-        ThroughPad _ _ net ->
-            net
-
-
-surfaceConductorNet : SurfaceConductor -> Net
-surfaceConductorNet smt =
-    case smt of
-        Trace _ net ->
-            net
-
-        SurfacePad _ _ net ->
-            net
-
-        Zone _ net ->
-            net
-
-
-
---pointNet : Model -> Point -> List ThroughConductor -> List SurfaceConductor -> Net
---pointNet model point thts smts =
---    case snapTo model.snapDistance point thts smts of
---        SnapPoint _ c _ ->
---            conductorNet c
---
---        FreePoint _ _ ->
---            AutoNet 0 -- TODO?
 -- VIEW
 
 
@@ -1014,25 +371,25 @@ view model =
                             [ Svg.svg
                                 [ SvgA.id "canvas"
                                 , SvgE.preventDefaultOn "mousedown" (Decode.map (\msg -> ( msg, True )) (Decode.map MouseDown decodeMousePosition))
-                                , SvgA.viewBox <| transformToViewBox model.canvasBoundingClientRect model.transform
+                                , SvgA.viewBox <| transformToViewBox model.canvasBoundingClientRect model.workspace.transform
                                 , SvgA.preserveAspectRatio "slice"
                                 ]
-                                ([ Maybe.withDefault (text "") <| Maybe.map viewLayer <| List.head model.layers
+                                ([ Maybe.withDefault (text "") <| Maybe.map (viewLayer model) <| List.head model.workspace.layers
                                  ]
-                                    ++ [ viewTool model
+                                    ++ [ fromWorkspaceSvg (Workspace.viewTool model.workspace)
                                        ]
-                                    ++ viewMaybeLayerSurfaceConductors (List.head model.layers)
-                                    ++ List.map viewThroughConductor model.conductors
+                                    ++ List.map fromWorkspaceSvg (Workspace.viewMaybeLayerSurfaceConductors (List.head model.workspace.layers))
+                                    ++ List.map fromWorkspaceSvg (List.map Workspace.viewThroughConductor model.workspace.conductors)
                                 )
                             ]
                         , div [ id "right-menu" ]
                             [ viewLayerList model.layers
-                            , viewLayerSelect model.loadLayerStatus
-                            , div [] [ button [ onClick <| SetTool <| SelectConductor Nothing ] [ text "Select Conductor" ] ]
-                            , div [] [ button [ onClick <| SetTool <| SelectNet Nothing ] [ text "Select Net" ] ]
-                            , div [] [ button [ onClick <| SetTool <| CreateThroughPad ] [ text "Create THT Pad/Via" ] ]
-                            , div [] [ button [ onClick <| SetTool <| CreateSurfacePad ] [ text "Create SMT Pad" ] ]
-                            , div [] [ button [ onClick <| SetTool <| CreateTrace [] ] [ text "Create Trace" ] ]
+                            , viewLayerSelect
+                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectConductor Nothing ] [ text "Select Conductor" ] ]
+                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectNet Nothing ] [ text "Select Net" ] ]
+                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateThroughPad ] [ text "Create THT Pad/Via" ] ]
+                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateSurfacePad ] [ text "Create SMT Pad" ] ]
+                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateTrace [] ] [ text "Create Trace" ] ]
                             ]
                         ]
                     ]
@@ -1042,226 +399,56 @@ view model =
     }
 
 
-viewLayer : LayerDefinition -> Svg Msg
-viewLayer layer =
+{-| Convert a Transform into a SVG viewBox attribute value
+-}
+transformToViewBox : BoundingClientRect -> Workspace.Transform -> String
+transformToViewBox r t =
+    let
+        width =
+            r.width * t.z
+
+        height =
+            r.height * t.z
+    in
+    String.join " " [ String.fromFloat <| t.x - (width / 2), String.fromFloat <| t.y - (height / 2), String.fromFloat <| width, String.fromFloat <| height ]
+
+
+{-| Render a layer using image data from the main model and active layer information from the workspace
+-}
+viewLayer : Model -> Workspace.Layer -> Svg Msg
+viewLayer model layer =
     if layer.opacity == 0 then
         Svg.text ""
 
     else
-        Svg.lazy
-            (\l ->
-                Svg.image
-                    [ SvgA.class <| "layer-" ++ l.title
-                    , SvgA.xlinkHref <| "data:" ++ l.mimeType ++ ";base64," ++ l.b64Data
-                    ]
-                    []
-            )
-            layer
+        let
+            maybeLayerData =
+                Dict.get layer.id model.layers
+        in
+        case maybeLayerData of
+            Just layerData ->
+                Svg.lazy
+                    (\ld ->
+                        Svg.image
+                            [ SvgA.class <| "layer-" ++ ld.title
+                            , SvgA.xlinkHref <| "data:" ++ ld.mimeType ++ ";base64," ++ ld.b64Data
+                            ]
+                            []
+                    )
+                    layerData
+
+            Nothing ->
+                -- TODO some error or ability to reload new image?
+                text ""
 
 
-fromPoint : String -> Point -> String
-fromPoint cmd point =
-    cmd ++ " " ++ String.fromFloat point.x ++ "," ++ String.fromFloat point.y
-
-
-{-| Take elements out of list while elements match a certain criteria
-and return a tuple of matched and unmatched elements
--}
-takeWhile : (a -> Bool) -> List a -> ( List a, List a )
-takeWhile test list =
-    case list of
-        a :: rest ->
-            if test a then
-                let
-                    ( matched, unmatched ) =
-                        takeWhile test rest
-                in
-                ( a :: matched, unmatched )
-
-            else
-                ( [], a :: rest )
-
-        _ ->
-            ( [], [] )
-
-
-
---
--- TODO use this, but I guess shorten the var names a bit first
-
-
-type alias CoordinateConversion a =
-    { a | canvasBoundingClientRect : BoundingClientRect, transform : Transform }
-
-
-mousePositionToPoint : BoundingClientRect -> Transform -> MousePosition -> Point
-mousePositionToPoint b t mousePosition =
-    let
-        deltaX =
-            mousePosition.offsetX - b.width / 2
-
-        deltaY =
-            mousePosition.offsetY - b.height / 2
-    in
-    { x = t.x + deltaX * t.z, y = t.y + deltaY * t.z }
-
-
-{-| Display anything and everything related to the active tool
--}
-viewTool : Model -> Svg Msg
-viewTool model =
-    case model.tool of
-        CreateTrace cps ->
-            viewTraceWithConstruction model (constructionPointsToTracePoints cps)
-
-        CreateThroughPad ->
-            let
-                point =
-                    mousePositionToPoint model.canvasBoundingClientRect model.transform model.lastMousePosition
-            in
-            viewThroughConductor <| ThroughPad point model.radius (AutoNet 0)
-
-        CreateSurfacePad ->
-            let
-                point =
-                    mousePositionToPoint model.canvasBoundingClientRect model.transform model.lastMousePosition
-            in
-            viewSurfaceConductor <| SurfacePad point (model.radius * 2) (AutoNet 0)
-
-        _ ->
-            Svg.text ""
-
-
-viewTrace : List TracePoint -> Svg Msg
-viewTrace points =
-    Svg.g [] (viewTraceSegmented points)
-
-
-viewTraceWithConstruction : Model -> List TracePoint -> Svg Msg
-viewTraceWithConstruction model points =
-    let
-        constructionTrace =
-            if model.focused then
-                [ viewConstructionTrace model points ]
-
-            else
-                []
-    in
-    Svg.g [] <|
-        viewTraceSegmented points
-            ++ constructionTrace
-
-
-pathFromPoints : List TracePoint -> Svg Msg
-pathFromPoints tracePoints =
-    case tracePoints of
-        start :: rest ->
-            let
-                d =
-                    SvgA.d <|
-                        String.join " " <|
-                            [ fromPoint "M" start.point ]
-                                ++ List.map (\tp -> fromPoint "L" tp.point) rest
-            in
-            Svg.path
-                [ d
-                , SvgA.fill "none"
-                , SvgA.stroke "red"
-                , SvgA.strokeWidth (String.fromFloat start.thickness)
-                , SvgA.strokeLinecap "round"
-                ]
-                []
-
-        _ ->
-            Svg.text ""
-
-
-viewTraceSegmented : List TracePoint -> List (Svg Msg)
-viewTraceSegmented tracePoints =
-    -- TODO add some intelligence here and merge lines that have the same thickness
-    -- use takeWhile here
-    case tracePoints of
-        start :: end :: rest ->
-            pathFromPoints [ start, end ] :: viewTraceSegmented (end :: rest)
-
-        _ ->
-            [ Svg.text "" ]
-
-
-viewConstructionTrace : Model -> List TracePoint -> Svg Msg
-viewConstructionTrace model tracePoints =
-    case List.reverse tracePoints of
-        last :: _ ->
-            let
-                mousePoint =
-                    mousePositionToPoint model.canvasBoundingClientRect model.transform model.lastMousePosition
-
-                point =
-                    case snapTo model.snapDistance mousePoint model.conductors (activeLayerSurfaceConductors model) model.thickness of
-                        SnapPoint p _ _ ->
-                            p
-
-                        FreePoint p _ ->
-                            p
-            in
-            pathFromPoints [ last, pointToTracePoint point model.thickness ]
-
-        _ ->
-            Svg.text ""
-
-
-viewMaybeLayerSurfaceConductors : Maybe LayerDefinition -> List (Svg Msg)
-viewMaybeLayerSurfaceConductors maybeLayer =
-    case maybeLayer of
-        Just layer ->
-            List.map viewSurfaceConductor layer.conductors
-
-        Nothing ->
-            []
-
-
-viewSurfaceConductor : SurfaceConductor -> Svg Msg
-viewSurfaceConductor surfaceConductor =
-    case surfaceConductor of
-        Trace tracePoints net ->
-            viewTrace tracePoints
-
-        SurfacePad point width net ->
-            let
-                half =
-                    width / 2
-            in
-            Svg.rect
-                [ SvgA.x <| String.fromFloat (point.x - half)
-                , SvgA.y <| String.fromFloat (point.y - half)
-                , SvgA.width <| String.fromFloat width
-                , SvgA.height <| String.fromFloat width
-                ]
-                []
-
-        Zone points net ->
-            Svg.text "ZONE"
-
-
-viewThroughConductor : ThroughConductor -> Svg Msg
-viewThroughConductor throughConductor =
-    case throughConductor of
-        ThroughPad point radius netId ->
-            Svg.circle
-                [ SvgA.cx <| String.fromFloat point.x
-                , SvgA.cy <| String.fromFloat point.y
-                , SvgA.r <| String.fromFloat radius
-                ]
-                []
-
-
-viewLayerList : List LayerDefinition -> Html Msg
+viewLayerList : Dict Int LayerData -> Html Msg
 viewLayerList layers =
     div [ class "layer-list" ] <|
-        List.indexedMap viewLayerControls layers
+        List.indexedMap viewLayerControls (Dict.values layers)
 
 
-viewLayerControls : Int -> LayerDefinition -> Html Msg
+viewLayerControls : Int -> LayerData -> Html Msg
 viewLayerControls index layer =
     div [ class "layer-info" ]
         [ span [] [ text layer.title ]
@@ -1269,35 +456,16 @@ viewLayerControls index layer =
         ]
 
 
-viewLayerSelect : LayerData -> Html Msg
-viewLayerSelect layerData =
-    case layerData of
-        RemoteData.NotAsked ->
-            div []
-                [ --input [ placeholder "New Layer", value title ] []
-                  button [ onClick <| GetLayerImage ] [ text <| "Import layer" ]
-                ]
-
-        RemoteData.Loading ->
-            div []
-                [ text "Loading.." ]
-
-        RemoteData.Failure error ->
-            div []
-                [ text "Error todo" ]
-
-        -- Todo shouldn't get this one tbh
-        RemoteData.Success result ->
-            div []
-                [ text "Success todo" ]
+viewLayerSelect : Html Msg
+viewLayerSelect =
+    div []
+        [ --input [ placeholder "New Layer", value title ] []
+          button [ onClick <| GetLayerImage ] [ text <| "Import layer" ]
+        ]
 
 
-type alias MousePosition =
-    { timeStamp : Float
-    , offsetX : Float
-    , offsetY : Float
-    , button : Int
-    }
+
+-- DECODERS
 
 
 decodeMousePosition : Decoder MousePosition
@@ -1339,3 +507,41 @@ subscriptions _ =
         , onKeyUp (decodeKey |> Decode.map KeyUp)
         , onMouseUp (Decode.map MouseUp decodeMousePosition)
         ]
+
+
+
+-- PORTS
+
+
+port mouseDrag : (MousePosition -> msg) -> Sub msg
+
+
+port startDrag : () -> Cmd msg
+
+
+port wheel : (Float -> msg) -> Sub msg
+
+
+port startWheel : () -> Cmd msg
+
+
+port endWheel : () -> Cmd msg
+
+
+port resize : (BoundingClientRect -> msg) -> Sub msg
+
+
+port canvasSize : () -> Cmd msg
+
+
+port checkImages : () -> Cmd msg
+
+
+port imageInformation : (List ImageInformation -> msg) -> Sub msg
+
+
+type alias ImageInformation =
+    { layer : String
+    , height : Float
+    , width : Float
+    }
