@@ -230,8 +230,7 @@ update msg model =
                             (\m ->
                                 ( m
                                 , Cmd.batch
-                                    [ setLayers (List.filterMap (toExternalLayer m) m.workspace.layers)
-                                    , checkImages ()
+                                    [ setLayers ( List.filterMap (toExternalLayer m) m.workspace.layers, True )
                                     ]
                                 )
                             )
@@ -273,7 +272,7 @@ update msg model =
               }
             , Cmd.none
             )
-                |> chainUpdate (\m -> ( m, setLayers (List.filterMap (toExternalLayer m) m.workspace.layers) ))
+                |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.workspace.layers, False ) ))
 
         --( { model | layers = List.take index model.layers ++ List.drop (index + 1) model.layers }, Cmd.none )
         MouseDown mousePosition ->
@@ -334,7 +333,7 @@ update msg model =
                 86 ->
                     -- v
                     fromWorkspaceUpdate (Workspace.update Workspace.CycleLayers model.workspace) model
-                        |> chainUpdate (\m -> ( m, setLayers (List.filterMap (toExternalLayer m) m.workspace.layers) ))
+                        |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.workspace.layers, False ) ))
 
                 16 ->
                     -- shift
@@ -585,7 +584,7 @@ port checkImages : () -> Cmd msg
 port imageInformation : (List ImageInformation -> msg) -> Sub msg
 
 
-port setLayers : List ExternalLayer -> Cmd msg
+port setLayers : ( List ExternalLayer, Bool ) -> Cmd msg
 
 
 type alias ImageInformation =

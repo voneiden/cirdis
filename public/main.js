@@ -57,7 +57,6 @@ cirdis.ports.endWheel.subscribe(() => {
 
 const sendCanvasSize = function sendCanvasSize() {
   const canvasContainer = document.getElementById('canvas-container')
-  console.log("got container", canvasContainer)
   if (canvasContainer) {
     cirdis.ports.resize.send(canvasContainer.getBoundingClientRect())
   }
@@ -76,37 +75,36 @@ cirdis.ports.canvasSize.subscribe(() => {
 })
 
 
-cirdis.ports.checkImages.subscribe(() => {
-  requestAnimationFrame(() => {
-
-    const images = Array.from(document.querySelectorAll("svg image"))
-    const imageInformations = images.filter(i => i.id.startsWith('layer-')).map(i => {
-      const tempImage = new Image()
-      tempImage.src = i.href.baseVal
-      return {
-        layer: i.className.baseVal.slice(6),
-        width: tempImage.width,
-        height: tempImage.height
-      }
-    })
-
-    cirdis.ports.imageInformation.send(imageInformations)
-
+const checkImages = function checkImages() {
+  const images = Array.from(document.querySelectorAll("svg image"))
+  const imageInformations = images.filter(i => i.id.startsWith('layer-')).map(i => {
+    const tempImage = new Image()
+    tempImage.src = i.href.baseVal
+    return {
+      layer: i.className.baseVal.slice(6),
+      width: tempImage.width,
+      height: tempImage.height
+    }
   })
-})
+  cirdis.ports.imageInformation.send(imageInformations)
+}
+
 
 /* External layer handling */
 const cirdisLayersNode = document.createElementNS("http://www.w3.org/2000/svg", 'g')
-cirdis.ports.setLayers.subscribe((layers) => {
-  console.log("GOT layers", layers)
+cirdis.ports.setLayers.subscribe(([layers, checkImage]) => {
   while (cirdisLayersNode.firstChild) {
     cirdisLayersNode.firstChild.remove()
   }
-  for (const layer of layers) {
+  for (const layer of layers.reverse()) {
     const image = document.createElementNS("http://www.w3.org/2000/svg", "image")
     image.setAttribute("id", "layer-" + layer.id.toString())
     image.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "data:" + layer.mimeType + ";base64," + layer.b64Data)
     cirdisLayersNode.appendChild(image)
+  }
+
+  if (checkImage) {
+    checkImages()
   }
 })
 

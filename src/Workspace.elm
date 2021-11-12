@@ -58,6 +58,7 @@ newLayer layerId =
     , conductors = []
     }
 
+
 activeLayerSurfaceConductors : Model -> List SurfaceConductor
 activeLayerSurfaceConductors model =
     Maybe.withDefault [] (Maybe.map (\l -> l.conductors) (List.head model.layers))
@@ -470,7 +471,22 @@ update msg model =
                 ( { model | transform = zoomTransform model.transform delta }, Cmd.none )
 
         SetTool tool ->
-            ( { model | tool = tool }, Cmd.none )
+            case ( tool, model.tool ) of
+                ( CreateTrace [], CreateTrace trace ) ->
+                    ( { model
+                        | tool =
+                            CreateTrace
+                                (trace
+                                    |> List.reverse
+                                    |> List.drop 1
+                                    |> List.reverse
+                                )
+                      }
+                    , Cmd.none
+                    )
+
+                _ ->
+                    ( { model | tool = tool }, Cmd.none )
 
         ResetTool ->
             ( resetTool model, Cmd.none )
