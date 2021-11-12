@@ -1,11 +1,7 @@
 import "../styles/views.scss"
-import {Elm} from "../src/Main.elm";
+import {Elm as Cirdis} from "../src/Main.elm";
 
-const parseStorage = function parseStorage() {
-  return JSON.parse(localStorage.getItem('jalava'))
-}
-
-const app = Elm.Main.init({})
+const cirdis = Cirdis.Main.init({})
 
 
 // Mouse move perf hack
@@ -25,7 +21,7 @@ document.addEventListener("mousemove", (e) => {
     return;
   }
   console.log("Pass event", e)
-  app.ports.mouseDrag.send(e)
+  cirdis.ports.mouseDrag.send(e)
   lastMouseMove = now
 })
 document.addEventListener("mouseup", () => {
@@ -45,7 +41,7 @@ document.addEventListener("wheel", (e) => {
     return;
   }
   console.log("scrlll", e)
-  app.ports.wheel.send(deltaWheel)
+  cirdis.ports.wheel.send(deltaWheel)
 
   deltaWheel = 0;
   e.preventDefault()
@@ -54,11 +50,11 @@ document.addEventListener("wheel", (e) => {
   return false;
 })
 
-app.ports.startWheel.subscribe(() => {
+cirdis.ports.startWheel.subscribe(() => {
   sendWheel = true;
 })
 
-app.ports.endWheel.subscribe(() => {
+cirdis.ports.endWheel.subscribe(() => {
   sendWheel = true;
 })
 
@@ -66,7 +62,7 @@ const sendCanvasSize = function sendCanvasSize() {
   const canvasContainer = document.getElementById('canvas-container')
   console.log("got container", canvasContainer)
   if (canvasContainer) {
-    app.ports.resize.send(canvasContainer.getBoundingClientRect())
+    cirdis.ports.resize.send(canvasContainer.getBoundingClientRect())
   }
 }
 window.addEventListener('resize', (e) => {
@@ -75,7 +71,7 @@ window.addEventListener('resize', (e) => {
 });
 
 
-app.ports.canvasSize.subscribe(() => {
+cirdis.ports.canvasSize.subscribe(() => {
   requestAnimationFrame(() => {
     sendCanvasSize()
   })
@@ -83,7 +79,7 @@ app.ports.canvasSize.subscribe(() => {
 })
 
 
-app.ports.checkImages.subscribe(() => {
+cirdis.ports.checkImages.subscribe(() => {
   requestAnimationFrame(() => {
 
     const images = Array.from(document.querySelectorAll("svg image"))
@@ -97,7 +93,37 @@ app.ports.checkImages.subscribe(() => {
       }
     })
 
-    app.ports.imageInformation.send(imageInformations)
+    cirdis.ports.imageInformation.send(imageInformations)
 
   })
 })
+
+/* External layer handling */
+const cirdisLayersNode = document.createElementNS("http://www.w3.org/2000/svg", 'g')
+cirdis.ports.setLayers.subscribe((layers) => {
+  while (cirdisLayersNode.firstChild) {
+    cirdisLayersNode.firstChild.remove()
+  }
+  for (const layer of layers) {
+    const image = document.createElementNS("http://www.w3.org/2000/svg", "image")
+    image.setAttribute("id", "layer-" + layer.id.toString())
+    image.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "data:" + layer.mimeType + ";base64," + layer.b64Data)
+    cirdisLayersNode.appendChild(image)
+  }
+})
+
+/* We use this mean trick to force an elm app inside an elm app
+* The whole reason for this is performance - re-rending the image is very costly
+* so we want to do it only when absolutely necessary (not on every mousemove!) */
+function forceMount() {
+  const mountpoint = document.getElementById('cirdis-layers-mountpoint')
+  if (mountpoint) {
+    if (!mountpoint.contains(cirdisLayersNode)) {
+      mountpoint.appendChild(cirdisLayersNode)
+      console.log("Mounted cirdisLayersNode")
+    }
+  }
+  window.requestAnimationFrame(forceMount)
+}
+
+window.requestAnimationFrame(forceMount)

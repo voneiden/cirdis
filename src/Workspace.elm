@@ -58,7 +58,6 @@ newLayer layerId =
     , conductors = []
     }
 
-
 activeLayerSurfaceConductors : Model -> List SurfaceConductor
 activeLayerSurfaceConductors model =
     Maybe.withDefault [] (Maybe.map (\l -> l.conductors) (List.head model.layers))

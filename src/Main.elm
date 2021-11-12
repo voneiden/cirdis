@@ -67,6 +67,27 @@ type alias LayerData =
     }
 
 
+type alias ExternalLayer =
+    { id : Int
+    , b64Data : String
+    , mimeType : String
+    , opacity : Int
+    }
+
+
+toExternalLayer : Model -> ( Int, LayerData ) -> ExternalLayer
+toExternalLayer model ( layerId, layerData ) =
+    let
+        wsLayers =
+            Dict.fromList <| List.map (\l -> ( l.id, l.opacity )) model.workspace.layers
+    in
+    { id = layerId
+    , b64Data = layerData.b64Data
+    , mimeType = layerData.mimeType
+    , opacity = Maybe.withDefault 100 <| Dict.get layerId wsLayers
+    }
+
+
 type alias MousePosition =
     { timeStamp : Float
     , offsetX : Float
@@ -203,8 +224,15 @@ update msg model =
                     fromWorkspaceUpdate (Workspace.update (Workspace.AddLayer layerId) model.workspace) model
                         |> chainUpdate
                             (\m ->
+                                let
+                                    layers = Dict.insert layerId layerDefinition model.layers
+                                in
                                 ( { m | layers = Dict.insert layerId layerDefinition model.layers }
-                                , Cmd.batch [ canvasSize (), checkImages () ]
+                                , Cmd.batch
+                                    [ canvasSize ()
+                                    , checkImages ()
+                                    , setLayers (List.map (toExternalLayer model) (Dict.toList layers))
+                                    ]
                                 )
                             )
 
@@ -374,8 +402,10 @@ view model =
                                 , SvgA.viewBox <| transformToViewBox model.canvasBoundingClientRect model.workspace.transform
                                 , SvgA.preserveAspectRatio "slice"
                                 ]
-                                ([ Maybe.withDefault (text "") <| Maybe.map (viewLayer model) <| List.head model.workspace.layers
-                                 ]
+                                (
+                                --[ Maybe.withDefault (text "") <| Maybe.map (viewLayer model) <| List.head model.workspace.layers
+                                --]
+                                [ Svg.g [ SvgA.id "cirdis-layers-mountpoint" ] [] ]
                                     ++ [ fromWorkspaceSvg (Workspace.viewTool model.workspace)
                                        ]
                                     ++ List.map fromWorkspaceSvg (Workspace.viewMaybeLayerSurfaceConductors (List.head model.workspace.layers))
@@ -538,6 +568,9 @@ port checkImages : () -> Cmd msg
 
 
 port imageInformation : (List ImageInformation -> msg) -> Sub msg
+
+
+port setLayers : List ExternalLayer -> Cmd msg
 
 
 type alias ImageInformation =
