@@ -11,16 +11,15 @@ let sendDrag = false;
 document.addEventListener("mousemove", (e) => {
   let now = Date.now()
   // 30 fps? 25 fps looks bad
+  // TODO improve blocking so that last event always gets sent
+  // Or remove this completely as it's no longer that cpu heavy..
   if (now - lastMouseMove < 33) {
-    console.log("Block event")
     return;
   }
   const canvas = document.getElementById('canvas')
   if (!canvas.contains(e.target)) {
-    console.log("Ignore mousemove outside canvas")
     return;
   }
-  console.log("Pass event", e)
   cirdis.ports.mouseDrag.send(e)
   lastMouseMove = now
 })
@@ -37,10 +36,8 @@ document.addEventListener("wheel", (e) => {
   let now = Date.now();
   deltaWheel += e.deltaY
   if (now - lastWheel < 33 || !sendWheel) {
-    console.log("Block scroll", e)
     return;
   }
-  console.log("scrlll", e)
   cirdis.ports.wheel.send(deltaWheel)
 
   deltaWheel = 0;
@@ -83,7 +80,7 @@ cirdis.ports.checkImages.subscribe(() => {
   requestAnimationFrame(() => {
 
     const images = Array.from(document.querySelectorAll("svg image"))
-    const imageInformations = images.filter(i => i.className.baseVal.startsWith('layer-')).map(i => {
+    const imageInformations = images.filter(i => i.id.startsWith('layer-')).map(i => {
       const tempImage = new Image()
       tempImage.src = i.href.baseVal
       return {
@@ -101,6 +98,7 @@ cirdis.ports.checkImages.subscribe(() => {
 /* External layer handling */
 const cirdisLayersNode = document.createElementNS("http://www.w3.org/2000/svg", 'g')
 cirdis.ports.setLayers.subscribe((layers) => {
+  console.log("GOT layers", layers)
   while (cirdisLayersNode.firstChild) {
     cirdisLayersNode.firstChild.remove()
   }

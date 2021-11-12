@@ -75,17 +75,18 @@ type alias ExternalLayer =
     }
 
 
-toExternalLayer : Model -> ( Int, LayerData ) -> ExternalLayer
-toExternalLayer model ( layerId, layerData ) =
-    let
-        wsLayers =
-            Dict.fromList <| List.map (\l -> ( l.id, l.opacity )) model.workspace.layers
-    in
-    { id = layerId
-    , b64Data = layerData.b64Data
-    , mimeType = layerData.mimeType
-    , opacity = Maybe.withDefault 100 <| Dict.get layerId wsLayers
-    }
+toExternalLayer : Model -> Workspace.Layer -> Maybe ExternalLayer
+toExternalLayer model wsLayer =
+    Maybe.map
+        (\layerData ->
+            { id = wsLayer.id
+            , b64Data = layerData.b64Data
+            , mimeType = layerData.mimeType
+            , opacity = wsLayer.opacity
+            }
+        )
+    <|
+        Dict.get wsLayer.id model.layers
 
 
 type alias MousePosition =
@@ -225,13 +226,21 @@ update msg model =
                         |> chainUpdate
                             (\m ->
                                 let
-                                    layers = Dict.insert layerId layerDefinition model.layers
+                                    layers =
+                                        Dict.insert layerId layerDefinition model.layers
                                 in
-                                ( { m | layers = Dict.insert layerId layerDefinition model.layers }
+                                ( { m | layers = layers }
                                 , Cmd.batch
                                     [ canvasSize ()
+                                    ]
+                                )
+                            )
+                        |> chainUpdate
+                            (\m ->
+                                ( m
+                                , Cmd.batch
+                                    [ setLayers (List.filterMap (toExternalLayer m) m.workspace.layers)
                                     , checkImages ()
-                                    , setLayers (List.map (toExternalLayer model) (Dict.toList layers))
                                     ]
                                 )
                             )
@@ -239,9 +248,41 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
-        RemoveLayer index ->
+        GotImageInformation imageInformations ->
+            case List.take 1 imageInformations of
+                info :: _ ->
+                    let
+                        -- Frame the layer nicely
+                        widthRatio =
+                            info.width / model.canvasBoundingClientRect.width
+
+                        heightRatio =
+                            info.height / model.canvasBoundingClientRect.height
+
+                        transform =
+                            { x = info.width / 2
+                            , y = info.height / 2
+                            , z = max widthRatio heightRatio + 0.1
+                            }
+                    in
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTransform transform) model.workspace) model
+
+                _ ->
+                    ( model, Cmd.none )
+
+        RemoveLayer layerId ->
             -- todo needs refactoring
-            ( model, Cmd.none )
+            let
+                workspace =
+                    model.workspace
+            in
+            ( { model
+                | layers = Dict.remove layerId model.layers
+                , workspace = { workspace | layers = List.filter (\l -> not <| l.id == layerId) workspace.layers }
+              }
+            , Cmd.none
+            )
+                |> chainUpdate (\m -> ( m, setLayers (List.filterMap (toExternalLayer m) m.workspace.layers) ))
 
         --( { model | layers = List.take index model.layers ++ List.drop (index + 1) model.layers }, Cmd.none )
         MouseDown mousePosition ->
@@ -297,33 +338,12 @@ update msg model =
             -- TODO store this somewhere
             ( { model | canvasBoundingClientRect = boundingClientRect }, Cmd.none )
 
-        GotImageInformation imageInformations ->
-            case List.take 1 imageInformations of
-                info :: _ ->
-                    let
-                        -- Frame the layer nicely
-                        widthRatio =
-                            info.width / model.canvasBoundingClientRect.width
-
-                        heightRatio =
-                            info.height / model.canvasBoundingClientRect.height
-
-                        transform =
-                            { x = info.width / 2
-                            , y = info.height / 2
-                            , z = max widthRatio heightRatio + 0.1
-                            }
-                    in
-                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTransform transform) model.workspace) model
-
-                _ ->
-                    ( model, Cmd.none )
-
         KeyDown key ->
             case key.keyCode of
                 86 ->
                     -- v
                     fromWorkspaceUpdate (Workspace.update Workspace.CycleLayers model.workspace) model
+                        |> chainUpdate (\m -> ( m, setLayers (List.filterMap (toExternalLayer m) m.workspace.layers) ))
 
                 16 ->
                     -- shift
@@ -402,10 +422,9 @@ view model =
                                 , SvgA.viewBox <| transformToViewBox model.canvasBoundingClientRect model.workspace.transform
                                 , SvgA.preserveAspectRatio "slice"
                                 ]
-                                (
                                 --[ Maybe.withDefault (text "") <| Maybe.map (viewLayer model) <| List.head model.workspace.layers
                                 --]
-                                [ Svg.g [ SvgA.id "cirdis-layers-mountpoint" ] [] ]
+                                ([ Svg.g [ SvgA.id "cirdis-layers-mountpoint" ] [] ]
                                     ++ [ fromWorkspaceSvg (Workspace.viewTool model.workspace)
                                        ]
                                     ++ List.map fromWorkspaceSvg (Workspace.viewMaybeLayerSurfaceConductors (List.head model.workspace.layers))
@@ -413,7 +432,7 @@ view model =
                                 )
                             ]
                         , div [ id "right-menu" ]
-                            [ viewLayerList model.layers
+                            [ viewLayerList model.workspace.layers model.layers
                             , viewLayerSelect
                             , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectConductor Nothing ] [ text "Select Conductor" ] ]
                             , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectNet Nothing ] [ text "Select Net" ] ]
@@ -472,17 +491,22 @@ viewLayer model layer =
                 text ""
 
 
-viewLayerList : Dict Int LayerData -> Html Msg
-viewLayerList layers =
+viewLayerList : List Workspace.Layer -> Dict Int LayerData -> Html Msg
+viewLayerList wsLayers layers =
     div [ class "layer-list" ] <|
-        List.indexedMap viewLayerControls (Dict.values layers)
+        List.filterMap
+            (\wsLayer ->
+                Dict.get wsLayer.id layers
+                    |> Maybe.map (\layer -> viewLayerControls wsLayer layer)
+            )
+            wsLayers
 
 
-viewLayerControls : Int -> LayerData -> Html Msg
-viewLayerControls index layer =
+viewLayerControls : Workspace.Layer -> LayerData -> Html Msg
+viewLayerControls wsLayer layer =
     div [ class "layer-info" ]
         [ span [] [ text layer.title ]
-        , span [ onClick <| RemoveLayer index ] [ text "[Remove]" ]
+        , span [ onClick <| RemoveLayer wsLayer.id ] [ text "[Remove]" ]
         ]
 
 
