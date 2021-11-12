@@ -33,6 +33,15 @@ type alias Point =
     }
 
 
+chainUpdate : (model -> ( model, Cmd msg )) -> ( model, Cmd msg ) -> ( model, Cmd msg )
+chainUpdate toNew ( model, cmd ) =
+    let
+        ( newModel, newCmd ) =
+            toNew model
+    in
+    ( newModel, Cmd.batch [ cmd, newCmd ] )
+
+
 {-| Svg helper for converting points into SVG coordinate strings (like: M 5,5)
 -}
 fromPoint : String -> Point -> String

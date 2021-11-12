@@ -4,7 +4,7 @@ import Base64
 import Browser exposing (Document)
 import Browser.Events exposing (onKeyDown, onKeyUp, onMouseUp)
 import Bytes exposing (Bytes)
-import Common exposing (Point)
+import Common exposing (Point, chainUpdate)
 import Dict exposing (Dict)
 import File exposing (File)
 import File.Select as Select
@@ -169,15 +169,6 @@ type alias FileInfo =
     , mime : String
     , data : Bytes
     }
-
-
-chainUpdate : (Model -> ( Model, Cmd Msg )) -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
-chainUpdate toNew ( model, cmd ) =
-    let
-        ( newModel, newCmd ) =
-            toNew model
-    in
-    ( newModel, Cmd.batch [ cmd, newCmd ] )
 
 
 fromWorkspaceUpdate : ( Workspace.Model, Cmd Workspace.Msg ) -> Model -> ( Model, Cmd Msg )
