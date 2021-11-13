@@ -1,6 +1,6 @@
 module Workspace exposing (..)
 
-import Common exposing (Dragging, Point, Radius, ShiftPressed, Thickness, Width, cycle, distanceToPoint, fromPoint)
+import Common exposing (Dragging, Point, Radius, ShiftPressed, Thickness, Width, cycle, distanceToPoint, fromPoint, unique)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
 
@@ -150,9 +150,19 @@ netColor highlightedNets net =
                 c
 
 
+netsConductors : Model -> List Net -> List Conductor
+netsConductors model nets =
+    List.filter (\c -> List.member (conductorNet c) nets) (allConductors model)
+
+
 type Conductor
     = Surface SurfaceConductor
     | Through ThroughConductor
+
+
+allConductors : Model -> List Conductor
+allConductors model =
+    List.map Through model.conductors ++ List.concatMap (\layer -> List.map Surface layer.conductors) model.layers
 
 
 conductorNet : Conductor -> Net
@@ -357,11 +367,15 @@ isNoNet net =
             False
 
 
-mergeNets : List Conductor -> MergeNet
-mergeNets conductors =
+mergeNets : Model -> List Conductor -> MergeNet
+mergeNets model snappedConductors =
     let
         nets =
-            List.map conductorNet conductors
+            List.map conductorNet snappedConductors
+                |> unique
+
+        conductors =
+            netsConductors model nets
 
         ( customNets, autoNets ) =
             List.partition isCustomNet (List.filter (not << isNoNet) nets)
@@ -441,7 +455,7 @@ update msg model =
                             else
                                 let
                                     mergedNet =
-                                        mergeNets (constructionPointsToConductors newPoints)
+                                        mergeNets model (constructionPointsToConductors newPoints)
                                 in
                                 case mergedNet of
                                     MergeOk net conductors ->

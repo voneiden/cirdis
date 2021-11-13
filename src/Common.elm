@@ -92,3 +92,19 @@ takeWhile test list =
 
         _ ->
             ( [], [] )
+
+
+{-| Reduce a list to unique items
+-}
+unique : List a -> List a
+unique list =
+    List.foldl
+        (\a uniques ->
+            if List.member a uniques then
+                uniques
+
+            else
+                uniques ++ [ a ]
+        )
+        []
+        list
