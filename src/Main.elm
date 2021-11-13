@@ -411,10 +411,7 @@ view model =
                                 --[ Maybe.withDefault (text "") <| Maybe.map (viewLayer model) <| List.head model.workspace.layers
                                 --]
                                 ([ Svg.g [ SvgA.id "cirdis-layers-mountpoint" ] [] ]
-                                    ++ [ fromWorkspaceSvg (Workspace.viewTool model.workspace)
-                                       ]
-                                    ++ List.map fromWorkspaceSvg (Workspace.viewMaybeLayerSurfaceConductors model.workspace.highlightNets (List.head model.workspace.layers))
-                                    ++ List.map fromWorkspaceSvg (List.map (Workspace.viewThroughConductor model.workspace.highlightNets) model.workspace.conductors)
+                                    ++ viewWorkspace model
                                 )
                             ]
                         , div [ id "right-menu" ]
@@ -424,6 +421,7 @@ view model =
                             , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateThroughPadTool ] [ text "Create THT Pad/Via" ] ]
                             , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateSurfacePadTool ] [ text "Create SMT Pad" ] ]
                             , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateTraceTool [] ] [ text "Create Trace" ] ]
+                            , viewInfo model
                             ]
                         ]
                     ]
@@ -431,6 +429,18 @@ view model =
             model
         ]
     }
+
+
+viewWorkspace : Model -> List (Svg Msg)
+viewWorkspace model =
+    if List.isEmpty model.workspace.layers then
+        []
+
+    else
+        [ fromWorkspaceSvg (Workspace.viewTool model.workspace)
+        ]
+            ++ List.map fromWorkspaceSvg (Workspace.viewMaybeLayerSurfaceConductors model.workspace.highlightNets (List.head model.workspace.layers))
+            ++ List.map fromWorkspaceSvg (List.map (Workspace.viewThroughConductor model.workspace.highlightNets) model.workspace.conductors)
 
 
 {-| Convert a Transform into a SVG viewBox attribute value
@@ -501,6 +511,33 @@ viewLayerSelect =
         [ --input [ placeholder "New Layer", value title ] []
           button [ onClick <| GetLayerImage ] [ text <| "Import layer" ]
         ]
+
+
+viewInfo : Model -> Html Msg
+viewInfo model =
+    let
+        content =
+            if List.isEmpty model.workspace.layers then
+                text "Start by importing a new layer!"
+
+            else
+                case model.workspace.tool of
+                    Workspace.SelectTool maybeConductor ->
+                        text "Info about selection"
+
+                    Workspace.CreateTraceTool constructionPoints ->
+                        text <| "Trace thickness: " ++ String.fromFloat model.workspace.thickness
+
+                    Workspace.CreateSurfacePadTool ->
+                        text <| "Pad size: " ++ (String.fromFloat <| model.workspace.radius * 2)
+
+                    Workspace.CreateThroughPadTool ->
+                        text <| "Pad radius:: " ++ String.fromFloat model.workspace.radius
+
+                    Workspace.CreateZoneTool ->
+                        text "Zone tool"
+    in
+    div [] [ content ]
 
 
 

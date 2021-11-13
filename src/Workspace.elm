@@ -444,70 +444,74 @@ update msg model =
                 snapPoint =
                     snapTo model.snapDistance point model.conductors (activeLayerSurfaceConductors model)
             in
-            case model.tool of
-                CreateTraceTool points ->
-                    case snapPoint model.thickness of
-                        SnapPoint p c t ->
-                            let
-                                newPoints =
-                                    points ++ [ SnapPoint p c t ]
-                            in
-                            if List.isEmpty points then
-                                ( { model | tool = CreateTraceTool newPoints }
-                                    |> createTraceToHighlightNets newPoints
-                                , Cmd.none
-                                )
+            if List.isEmpty model.layers then
+                ( model, Cmd.none )
 
-                            else
+            else
+                case model.tool of
+                    CreateTraceTool points ->
+                        case snapPoint model.thickness of
+                            SnapPoint p c t ->
                                 let
-                                    mergedNet =
-                                        mergeNets model (constructionPointsToConductors newPoints)
+                                    newPoints =
+                                        points ++ [ SnapPoint p c t ]
                                 in
-                                case mergedNet of
-                                    MergeOk net conductors ->
-                                        ( List.foldl (updateConductorNet net) model conductors
-                                            |> addSurfaceConductor (constructionPointsToTrace newPoints net)
-                                            |> resetTool
-                                            |> createTraceToHighlightNets newPoints
-                                        , Cmd.none
-                                        )
+                                if List.isEmpty points then
+                                    ( { model | tool = CreateTraceTool newPoints }
+                                        |> createTraceToHighlightNets newPoints
+                                    , Cmd.none
+                                    )
 
-                                    MergeConflict nets conductors ->
-                                        -- TODO show somekind of conflict resolution thing
-                                        ( resetTool model, Cmd.none )
+                                else
+                                    let
+                                        mergedNet =
+                                            mergeNets model (constructionPointsToConductors newPoints)
+                                    in
+                                    case mergedNet of
+                                        MergeOk net conductors ->
+                                            ( List.foldl (updateConductorNet net) model conductors
+                                                |> addSurfaceConductor (constructionPointsToTrace newPoints net)
+                                                |> resetTool
+                                                |> createTraceToHighlightNets newPoints
+                                            , Cmd.none
+                                            )
 
-                                    MergeNoNet conductors ->
-                                        let
-                                            net =
-                                                AutoNet model.nextNetId
-                                        in
-                                        ( List.foldl (updateConductorNet net) model conductors
-                                            |> addSurfaceConductor (constructionPointsToTrace newPoints net)
-                                            |> resetTool
-                                            |> incrementNextNetId
-                                            |> createTraceToHighlightNets newPoints
-                                        , Cmd.none
-                                        )
+                                        MergeConflict nets conductors ->
+                                            -- TODO show somekind of conflict resolution thing
+                                            ( resetTool model, Cmd.none )
 
-                        FreePoint p t ->
-                            let
-                                t2 =
-                                    points ++ [ FreePoint p t ]
-                            in
-                            if List.isEmpty points then
-                                ( model, Cmd.none )
+                                        MergeNoNet conductors ->
+                                            let
+                                                net =
+                                                    AutoNet model.nextNetId
+                                            in
+                                            ( List.foldl (updateConductorNet net) model conductors
+                                                |> addSurfaceConductor (constructionPointsToTrace newPoints net)
+                                                |> resetTool
+                                                |> incrementNextNetId
+                                                |> createTraceToHighlightNets newPoints
+                                            , Cmd.none
+                                            )
 
-                            else
-                                ( { model | tool = CreateTraceTool t2 }, Cmd.none )
+                            FreePoint p t ->
+                                let
+                                    t2 =
+                                        points ++ [ FreePoint p t ]
+                                in
+                                if List.isEmpty points then
+                                    ( model, Cmd.none )
 
-                CreateThroughPadTool ->
-                    ( addThroughConductor (ThroughPad point model.radius) model, Cmd.none )
+                                else
+                                    ( { model | tool = CreateTraceTool t2 }, Cmd.none )
 
-                CreateSurfacePadTool ->
-                    ( addSurfaceConductorNoNet (SurfacePad point (model.radius * 2)) model, Cmd.none )
+                    CreateThroughPadTool ->
+                        ( addThroughConductor (ThroughPad point model.radius) model, Cmd.none )
 
-                _ ->
-                    ( model, Cmd.none )
+                    CreateSurfacePadTool ->
+                        ( addSurfaceConductorNoNet (SurfacePad point (model.radius * 2)) model, Cmd.none )
+
+                    _ ->
+                        ( model, Cmd.none )
 
         ZoomDelta delta shiftPressed ->
             if shiftPressed then
