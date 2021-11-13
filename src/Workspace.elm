@@ -3,6 +3,7 @@ module Workspace exposing (..)
 import Common exposing (Dragging, Point, Radius, ShiftPressed, Thickness, Width, cycle, distanceToPoint, fromPoint, unique)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
+import Svg.Events as SvgE
 
 
 
@@ -35,7 +36,7 @@ defaultModel =
     , canvas = { width = 0, height = 0 }
     , radius = 10
     , thickness = 5
-    , tool = SelectConductor Nothing
+    , tool = SelectTool Nothing
     , conductors = []
     , nextNetId = 1
     , snapDistance = 10
@@ -323,12 +324,11 @@ constructionPointsToTrace points net =
 
 
 type Tool
-    = SelectConductor (Maybe Conductor)
-    | SelectNet (Maybe Net)
-    | CreateTrace (List (ConstructionPoint Thickness))
-    | CreateSurfacePad
-    | CreateThroughPad
-    | CreateZone
+    = SelectTool (Maybe Conductor)
+    | CreateTraceTool (List (ConstructionPoint Thickness))
+    | CreateSurfacePadTool
+    | CreateThroughPadTool
+    | CreateZoneTool
 
 
 type MergeNet
@@ -409,6 +409,12 @@ type Msg
     | CycleLayers
     | Focus
     | Unfocus
+    | ClickConductor ConductorSelection
+
+
+type ConductorSelection
+    = ConductorSelection Conductor
+    | TraceSegmentSelection SurfaceConductor Point Point
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -420,7 +426,7 @@ update msg model =
 
             else
                 case model.tool of
-                    CreateTrace cps ->
+                    CreateTraceTool cps ->
                         let
                             snapPoint =
                                 snapTo model.snapDistance point model.conductors (activeLayerSurfaceConductors model) 0
@@ -439,7 +445,7 @@ update msg model =
                     snapTo model.snapDistance point model.conductors (activeLayerSurfaceConductors model)
             in
             case model.tool of
-                CreateTrace points ->
+                CreateTraceTool points ->
                     case snapPoint model.thickness of
                         SnapPoint p c t ->
                             let
@@ -447,7 +453,7 @@ update msg model =
                                     points ++ [ SnapPoint p c t ]
                             in
                             if List.isEmpty points then
-                                ( { model | tool = CreateTrace newPoints }
+                                ( { model | tool = CreateTraceTool newPoints }
                                     |> createTraceToHighlightNets newPoints
                                 , Cmd.none
                                 )
@@ -488,12 +494,12 @@ update msg model =
                                 t2 =
                                     points ++ [ FreePoint p t ]
                             in
-                            ( { model | tool = CreateTrace t2 }, Cmd.none )
+                            ( { model | tool = CreateTraceTool t2 }, Cmd.none )
 
-                CreateThroughPad ->
+                CreateThroughPadTool ->
                     ( addThroughConductor (ThroughPad point model.radius) model, Cmd.none )
 
-                CreateSurfacePad ->
+                CreateSurfacePadTool ->
                     ( addSurfaceConductorNoNet (SurfacePad point (model.radius * 2)) model, Cmd.none )
 
                 _ ->
@@ -502,10 +508,10 @@ update msg model =
         ZoomDelta delta shiftPressed ->
             if shiftPressed then
                 case model.tool of
-                    CreateThroughPad ->
+                    CreateThroughPadTool ->
                         ( updateRadius delta model, Cmd.none )
 
-                    CreateSurfacePad ->
+                    CreateSurfacePadTool ->
                         ( updateRadius delta model, Cmd.none )
 
                     _ ->
@@ -516,10 +522,10 @@ update msg model =
 
         SetTool tool ->
             case ( tool, model.tool ) of
-                ( CreateTrace [], CreateTrace trace ) ->
+                ( CreateTraceTool [], CreateTraceTool trace ) ->
                     ( { model
                         | tool =
-                            CreateTrace
+                            CreateTraceTool
                                 (trace
                                     |> List.reverse
                                     |> List.drop 1
@@ -549,6 +555,9 @@ update msg model =
 
         Unfocus ->
             ( { model | focused = False }, Cmd.none )
+
+        ClickConductor conductorSelection ->
+            ( model, Cmd.none )
 
 
 createTraceToHighlightNets : List (ConstructionPoint Thickness) -> Model -> Model
@@ -581,23 +590,20 @@ resetTool model =
     let
         tool =
             case model.tool of
-                SelectConductor _ ->
-                    SelectConductor Nothing
+                SelectTool _ ->
+                    SelectTool Nothing
 
-                SelectNet _ ->
-                    SelectNet Nothing
+                CreateTraceTool _ ->
+                    CreateTraceTool []
 
-                CreateTrace _ ->
-                    CreateTrace []
+                CreateSurfacePadTool ->
+                    CreateSurfacePadTool
 
-                CreateSurfacePad ->
-                    CreateSurfacePad
+                CreateThroughPadTool ->
+                    CreateThroughPadTool
 
-                CreateThroughPad ->
-                    CreateThroughPad
-
-                CreateZone ->
-                    CreateZone
+                CreateZoneTool ->
+                    CreateZoneTool
     in
     { model | tool = tool }
 
@@ -714,13 +720,13 @@ updateSurfaceConductorNet net surfaceConductor model =
 viewTool : Model -> Svg Msg
 viewTool model =
     case model.tool of
-        CreateTrace cps ->
+        CreateTraceTool cps ->
             viewTraceWithConstruction model (constructionPointsToTracePoints cps)
 
-        CreateThroughPad ->
+        CreateThroughPadTool ->
             viewThroughConductor model.highlightNets <| ThroughPad model.cursor model.radius (NoNet model.nextNetId)
 
-        CreateSurfacePad ->
+        CreateSurfacePadTool ->
             viewSurfaceConductor model.highlightNets <| SurfacePad model.cursor (model.radius * 2) (NoNet model.nextNetId)
 
         _ ->
@@ -736,6 +742,7 @@ viewThroughConductor highlightNets throughConductor =
                 , SvgA.cy <| String.fromFloat point.y
                 , SvgA.r <| String.fromFloat radius
                 , SvgA.fill (netColor highlightNets net)
+                , SvgE.onClick (ClickConductor (ConductorSelection (Through throughConductor)))
                 ]
                 []
 
@@ -744,7 +751,7 @@ viewSurfaceConductor : List Net -> SurfaceConductor -> Svg Msg
 viewSurfaceConductor highlightNets surfaceConductor =
     case surfaceConductor of
         Trace tracePoints net ->
-            viewTrace (netColor highlightNets net) tracePoints
+            viewTrace (\p1 p2 -> ClickConductor (TraceSegmentSelection surfaceConductor p1 p2)) (netColor highlightNets net) tracePoints
 
         SurfacePad point width net ->
             let
@@ -764,9 +771,9 @@ viewSurfaceConductor highlightNets surfaceConductor =
             Svg.text "ZONE"
 
 
-viewTrace : String -> List TracePoint -> Svg Msg
-viewTrace color points =
-    Svg.g [] (viewTraceSegmented color points)
+viewTrace : (Point -> Point -> Msg) -> String -> List TracePoint -> Svg Msg
+viewTrace toClickMsg color points =
+    Svg.g [] (viewTraceSegmented (Just toClickMsg) color points)
 
 
 viewTraceWithConstruction : Model -> List TracePoint -> Svg Msg
@@ -780,7 +787,7 @@ viewTraceWithConstruction model points =
                 []
     in
     Svg.g [] <|
-        viewTraceSegmented (netColor [] (NoNet 0)) points
+        viewTraceSegmented Nothing (netColor [] (NoNet 0)) points
             ++ constructionTrace
 
 
@@ -818,40 +825,40 @@ viewCrosshair point =
         ]
 
 
-viewTracePoints : String -> List TracePoint -> Svg Msg
-viewTracePoints color tracePoints =
-    case tracePoints of
-        start :: rest ->
-            let
-                d =
-                    SvgA.d <|
-                        String.join " " <|
-                            [ fromPoint "M" start.point ]
-                                ++ List.map (\tp -> fromPoint "L" tp.point) rest
-            in
-            Svg.path
-                [ d
-                , SvgA.fill "none"
-                , SvgA.stroke color
-                , SvgA.strokeWidth (String.fromFloat start.thickness)
-                , SvgA.strokeLinecap "round"
-                ]
-                []
-
-        _ ->
-            Svg.text ""
+viewTraceSegment : Maybe (Point -> Point -> Msg) -> String -> TracePoint -> TracePoint -> Svg Msg
+viewTraceSegment maybeToClickMsg color start end =
+    let
+        d =
+            SvgA.d <|
+                String.join " " <|
+                    [ fromPoint "M" start.point
+                    , fromPoint "L" end.point
+                    ]
+    in
+    Svg.path
+        ([ d
+         , SvgA.fill "none"
+         , SvgA.stroke color
+         , SvgA.strokeWidth (String.fromFloat start.thickness)
+         , SvgA.strokeLinecap "round"
+         ]
+            ++ Maybe.withDefault [] (Maybe.map (\f -> [ SvgE.onClick (f start.point end.point) ]) maybeToClickMsg)
+        )
+        []
 
 
-viewTraceSegmented : String -> List TracePoint -> List (Svg Msg)
-viewTraceSegmented color tracePoints =
-    -- TODO add some intelligence here and merge lines that have the same thickness
-    -- use takeWhile here
+viewTraceSegmented : Maybe (Point -> Point -> Msg) -> String -> List TracePoint -> List (Svg Msg)
+viewTraceSegmented maybeToClickMsg color tracePoints =
     case tracePoints of
         start :: end :: rest ->
-            viewTracePoints color [ start, end ] :: viewTraceSegmented color (end :: rest)
+            viewTraceSegment maybeToClickMsg color start end :: viewTraceSegmented maybeToClickMsg color (end :: rest)
 
         _ ->
             [ Svg.text "" ]
+
+
+
+-- todo this one has confusing name with the other similar function, fix
 
 
 viewConstructionTrace : Model -> List TracePoint -> List (Svg Msg)
@@ -870,7 +877,7 @@ viewConstructionTrace model tracePoints =
     in
     case List.reverse tracePoints of
         last :: _ ->
-            [ viewTracePoints (netColor [] (NoNet 0)) [ last, pointToTracePoint point model.thickness ]
+            [ viewTraceSegment Nothing (netColor [] (NoNet 0)) last (pointToTracePoint point model.thickness)
             , viewCrosshair cp
             ]
 

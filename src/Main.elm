@@ -349,23 +349,19 @@ update msg model =
 
                 81 ->
                     -- q
-                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool (Workspace.SelectConductor Nothing)) model.workspace) model
-
-                87 ->
-                    -- w
-                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool (Workspace.SelectNet Nothing)) model.workspace) model
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool (Workspace.SelectTool Nothing)) model.workspace) model
 
                 65 ->
                     -- a
-                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool Workspace.CreateThroughPad) model.workspace) model
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool Workspace.CreateThroughPadTool) model.workspace) model
 
                 83 ->
                     -- s
-                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool Workspace.CreateSurfacePad) model.workspace) model
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool Workspace.CreateSurfacePadTool) model.workspace) model
 
                 68 ->
                     -- d
-                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool (Workspace.CreateTrace [])) model.workspace) model
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool (Workspace.CreateTraceTool [])) model.workspace) model
 
                 _ ->
                     ( model, Cmd.none )
@@ -424,11 +420,10 @@ view model =
                         , div [ id "right-menu" ]
                             [ viewLayerList model.workspace.layers model.layers
                             , viewLayerSelect
-                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectConductor Nothing ] [ text "Select Conductor" ] ]
-                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectNet Nothing ] [ text "Select Net" ] ]
-                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateThroughPad ] [ text "Create THT Pad/Via" ] ]
-                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateSurfacePad ] [ text "Create SMT Pad" ] ]
-                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateTrace [] ] [ text "Create Trace" ] ]
+                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectTool Nothing ] [ text "Select" ] ]
+                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateThroughPadTool ] [ text "Create THT Pad/Via" ] ]
+                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateSurfacePadTool ] [ text "Create SMT Pad" ] ]
+                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateTraceTool [] ] [ text "Create Trace" ] ]
                             ]
                         ]
                     ]
