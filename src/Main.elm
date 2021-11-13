@@ -417,8 +417,8 @@ view model =
                                 ([ Svg.g [ SvgA.id "cirdis-layers-mountpoint" ] [] ]
                                     ++ [ fromWorkspaceSvg (Workspace.viewTool model.workspace)
                                        ]
-                                    ++ List.map fromWorkspaceSvg (Workspace.viewMaybeLayerSurfaceConductors (List.head model.workspace.layers))
-                                    ++ List.map fromWorkspaceSvg (List.map Workspace.viewThroughConductor model.workspace.conductors)
+                                    ++ List.map fromWorkspaceSvg (Workspace.viewMaybeLayerSurfaceConductors model.workspace.highlightNets (List.head model.workspace.layers))
+                                    ++ List.map fromWorkspaceSvg (List.map (Workspace.viewThroughConductor model.workspace.highlightNets) model.workspace.conductors)
                                 )
                             ]
                         , div [ id "right-menu" ]

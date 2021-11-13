@@ -119,22 +119,35 @@ type alias Canvas =
 
 
 type Net
-    = NoNet
+    = NoNet Int
     | AutoNet Int
     | CustomNet String String
 
 
-netColor : Net -> String
-netColor net =
-    case net of
-        NoNet ->
-            "red"
+netColor : List Net -> Net -> String
+netColor highlightedNets net =
+    if List.member net highlightedNets then
+        case net of
+            NoNet _ ->
+                "cyan"
 
-        AutoNet _ ->
-            "grey"
+            AutoNet _ ->
+                "cyan"
 
-        CustomNet _ c ->
-            c
+            CustomNet _ c ->
+                "cyan"
+        -- todo?
+
+    else
+        case net of
+            NoNet _ ->
+                "red"
+
+            AutoNet _ ->
+                "grey"
+
+            CustomNet _ c ->
+                c
 
 
 type Conductor
@@ -337,7 +350,7 @@ isAutoNet net =
 isNoNet : Net -> Bool
 isNoNet net =
     case net of
-        NoNet ->
+        NoNet _ ->
             True
 
         _ ->
@@ -392,7 +405,19 @@ update msg model =
                 ( { model | cursor = point, transform = translateTransform model.transform dx dy }, Cmd.none )
 
             else
-                ( { model | cursor = point }, Cmd.none )
+                case model.tool of
+                    CreateTrace cps ->
+                        let
+                            snapPoint =
+                                snapTo model.snapDistance point model.conductors (activeLayerSurfaceConductors model) 0
+                        in
+                        ( { model | cursor = point }
+                            |> createTraceToHighlightNets (snapPoint :: cps)
+                        , Cmd.none
+                        )
+
+                    _ ->
+                        ( { model | cursor = point }, Cmd.none )
 
         LeftClick point ->
             let
@@ -408,7 +433,10 @@ update msg model =
                                     points ++ [ SnapPoint p c t ]
                             in
                             if List.isEmpty points then
-                                ( { model | tool = CreateTrace newPoints }, Cmd.none )
+                                ( { model | tool = CreateTrace newPoints }
+                                    |> createTraceToHighlightNets newPoints
+                                , Cmd.none
+                                )
 
                             else
                                 let
@@ -420,6 +448,7 @@ update msg model =
                                         ( List.foldl (updateConductorNet net) model conductors
                                             |> addSurfaceConductor (constructionPointsToTrace newPoints net)
                                             |> resetTool
+                                            |> createTraceToHighlightNets newPoints
                                         , Cmd.none
                                         )
 
@@ -436,6 +465,7 @@ update msg model =
                                             |> addSurfaceConductor (constructionPointsToTrace newPoints net)
                                             |> resetTool
                                             |> incrementNextNetId
+                                            |> createTraceToHighlightNets newPoints
                                         , Cmd.none
                                         )
 
@@ -450,7 +480,7 @@ update msg model =
                     ( addThroughConductor (ThroughPad point model.radius) model, Cmd.none )
 
                 CreateSurfacePad ->
-                    ( addSurfaceConductorAutoNet (SurfacePad point (model.radius * 2)) model, Cmd.none )
+                    ( addSurfaceConductorNoNet (SurfacePad point (model.radius * 2)) model, Cmd.none )
 
                 _ ->
                     ( model, Cmd.none )
@@ -507,6 +537,11 @@ update msg model =
             ( { model | focused = False }, Cmd.none )
 
 
+createTraceToHighlightNets : List (ConstructionPoint Thickness) -> Model -> Model
+createTraceToHighlightNets points model =
+    { model | highlightNets = List.map conductorNet (constructionPointsToConductors points) }
+
+
 updateRadius : Float -> Model -> Model
 updateRadius delta model =
     let
@@ -560,18 +595,18 @@ incrementNextNetId model =
 
 addThroughConductor : (Net -> ThroughConductor) -> Model -> Model
 addThroughConductor toConductor model =
-    case toConductor NoNet of
-        ThroughPad point radius _ ->
-            { model | nextNetId = model.nextNetId + 1, conductors = toConductor NoNet :: model.conductors }
+    case toConductor (NoNet model.nextNetId) of
+        ThroughPad point radius net ->
+            { model | nextNetId = model.nextNetId + 1, conductors = ThroughPad point radius net :: model.conductors }
 
 
-addSurfaceConductorAutoNet : (Net -> SurfaceConductor) -> Model -> Model
-addSurfaceConductorAutoNet toSurfaceConductor model =
+addSurfaceConductorNoNet : (Net -> SurfaceConductor) -> Model -> Model
+addSurfaceConductorNoNet toSurfaceConductor model =
     case model.layers of
         layer :: others ->
             let
                 updatedLayer =
-                    { layer | conductors = toSurfaceConductor NoNet :: layer.conductors }
+                    { layer | conductors = toSurfaceConductor (NoNet model.nextNetId) :: layer.conductors }
             in
             { model | layers = updatedLayer :: others, nextNetId = model.nextNetId + 1 }
 
@@ -669,33 +704,33 @@ viewTool model =
             viewTraceWithConstruction model (constructionPointsToTracePoints cps)
 
         CreateThroughPad ->
-            viewThroughConductor <| ThroughPad model.cursor model.radius NoNet
+            viewThroughConductor model.highlightNets <| ThroughPad model.cursor model.radius (NoNet model.nextNetId)
 
         CreateSurfacePad ->
-            viewSurfaceConductor <| SurfacePad model.cursor (model.radius * 2) NoNet
+            viewSurfaceConductor model.highlightNets <| SurfacePad model.cursor (model.radius * 2) (NoNet model.nextNetId)
 
         _ ->
             Svg.text ""
 
 
-viewThroughConductor : ThroughConductor -> Svg Msg
-viewThroughConductor throughConductor =
+viewThroughConductor : List Net -> ThroughConductor -> Svg Msg
+viewThroughConductor highlightNets throughConductor =
     case throughConductor of
         ThroughPad point radius net ->
             Svg.circle
                 [ SvgA.cx <| String.fromFloat point.x
                 , SvgA.cy <| String.fromFloat point.y
                 , SvgA.r <| String.fromFloat radius
-                , SvgA.fill (netColor net)
+                , SvgA.fill (netColor highlightNets net)
                 ]
                 []
 
 
-viewSurfaceConductor : SurfaceConductor -> Svg Msg
-viewSurfaceConductor surfaceConductor =
+viewSurfaceConductor : List Net -> SurfaceConductor -> Svg Msg
+viewSurfaceConductor highlightNets surfaceConductor =
     case surfaceConductor of
         Trace tracePoints net ->
-            viewTrace (netColor net) tracePoints
+            viewTrace (netColor highlightNets net) tracePoints
 
         SurfacePad point width net ->
             let
@@ -707,7 +742,7 @@ viewSurfaceConductor surfaceConductor =
                 , SvgA.y <| String.fromFloat (point.y - half)
                 , SvgA.width <| String.fromFloat width
                 , SvgA.height <| String.fromFloat width
-                , SvgA.fill <| netColor net
+                , SvgA.fill <| netColor highlightNets net
                 ]
                 []
 
@@ -731,7 +766,7 @@ viewTraceWithConstruction model points =
                 []
     in
     Svg.g [] <|
-        viewTraceSegmented (netColor NoNet) points
+        viewTraceSegmented (netColor [] (NoNet 0)) points
             ++ constructionTrace
 
 
@@ -821,7 +856,7 @@ viewConstructionTrace model tracePoints =
     in
     case List.reverse tracePoints of
         last :: _ ->
-            [ viewTracePoints (netColor NoNet) [ last, pointToTracePoint point model.thickness ]
+            [ viewTracePoints (netColor [] (NoNet 0)) [ last, pointToTracePoint point model.thickness ]
             , viewCrosshair cp
             ]
 
@@ -829,11 +864,11 @@ viewConstructionTrace model tracePoints =
             [ viewCrosshair cp ]
 
 
-viewMaybeLayerSurfaceConductors : Maybe Layer -> List (Svg Msg)
-viewMaybeLayerSurfaceConductors maybeLayer =
+viewMaybeLayerSurfaceConductors : List Net -> Maybe Layer -> List (Svg Msg)
+viewMaybeLayerSurfaceConductors highlightNets maybeLayer =
     case maybeLayer of
         Just layer ->
-            List.map viewSurfaceConductor layer.conductors
+            List.map (viewSurfaceConductor highlightNets) layer.conductors
 
         Nothing ->
             []
@@ -855,7 +890,7 @@ snapTo maxSnapDistance point thts smts =
     in
     case closest of
         Just ( conductorDistance, conductorPoint, conductor ) ->
-            if conductorDistance < maxSnapDistance then
+            if snaps conductor conductorDistance maxSnapDistance then
                 SnapPoint conductorPoint conductor
 
             else
@@ -863,3 +898,15 @@ snapTo maxSnapDistance point thts smts =
 
         Nothing ->
             FreePoint point
+
+
+snaps : Conductor -> Float -> Float -> Bool
+snaps conductor conductorDistance defaultSnapDistance =
+    case conductor of
+        Surface _ ->
+            conductorDistance < defaultSnapDistance
+
+        Through tc ->
+            case tc of
+                ThroughPad _ radius _ ->
+                    conductorDistance <= radius
