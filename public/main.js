@@ -6,14 +6,21 @@ const cirdis = Cirdis.Main.init({})
 
 // Mouse move perf hack
 let lastMouseMove = 0;
+let delayedDeliver = null;
 let sendDrag = false;
 
-document.addEventListener("mousemove", (e) => {
+const onMouseMove = function onMouseMove(e) {
+  if (delayedDeliver) {
+    window.clearTimeout(delayedDeliver)
+    delayedDeliver = null
+  }
   let now = Date.now()
   // 30 fps? 25 fps looks bad
   // TODO improve blocking so that last event always gets sent
   // Or remove this completely as it's no longer that cpu heavy..
-  if (now - lastMouseMove < 33) {
+  const timeSinceLastDeliveredEvent = now - lastMouseMove
+  if (timeSinceLastDeliveredEvent < 33) {
+    delayedDeliver = window.setTimeout( () => onMouseMove(e) , 34 - timeSinceLastDeliveredEvent)
     return;
   }
   const canvas = document.getElementById('canvas')
@@ -22,7 +29,9 @@ document.addEventListener("mousemove", (e) => {
   }
   cirdis.ports.mouseDrag.send(e)
   lastMouseMove = now
-})
+}
+
+document.addEventListener("mousemove", onMouseMove)
 document.addEventListener("mouseup", () => {
   sendDrag = false;
 })
