@@ -84,7 +84,7 @@ cirdis.ports.canvasSize.subscribe(() => {
 })
 
 
-const checkImages = function checkImages() {
+const checkImages = function checkImages(retryAttempt) {
   const images = Array.from(document.querySelectorAll("svg image"))
   const imageInformations = images.filter(i => i.id.startsWith('layer-')).map(i => {
     const tempImage = new Image()
@@ -113,7 +113,9 @@ cirdis.ports.setLayers.subscribe(([layers, checkImage]) => {
   }
 
   if (checkImage) {
-    checkImages()
+    // There appears to be no guarantee whether the svg is actually there yet or not if we call
+    // without requestAnimationFrame. Sometimes it is, sometimes it isn't.
+    window.requestAnimationFrame(() => checkImages())
   }
 })
 
