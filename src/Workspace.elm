@@ -494,7 +494,11 @@ update msg model =
                                 t2 =
                                     points ++ [ FreePoint p t ]
                             in
-                            ( { model | tool = CreateTraceTool t2 }, Cmd.none )
+                            if List.isEmpty points then
+                                ( model, Cmd.none )
+
+                            else
+                                ( { model | tool = CreateTraceTool t2 }, Cmd.none )
 
                 CreateThroughPadTool ->
                     ( addThroughConductor (ThroughPad point model.radius) model, Cmd.none )
