@@ -152,11 +152,15 @@ addTimelineEntry : WorkspaceTimeline -> Workspace.Model -> WorkspaceTimeline
 addTimelineEntry timeline next =
     case timeline.future of
         [] ->
-            { timeline | current = next, past = timeline.past ++ [ timeline.current ] }
+            { timeline
+                | current = next
+                , past = timeline.past ++ [ timeline.current ]
+            }
 
-        future ->
+        _ ->
+            -- todo branching?
             { current = next
-            , past = timeline.past
+            , past = timeline.past ++ [ timeline.current ]
             , future = []
             }
 
