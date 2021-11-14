@@ -59,6 +59,7 @@ type alias Model =
     , timeline : WorkspaceTimeline
     , zPressed : Bool
     , xPressed : Bool
+    , vPressed : Bool
     }
 
 
@@ -222,6 +223,7 @@ init _ =
       , timeline = defaultWorkspaceTimeline
       , zPressed = False
       , xPressed = False
+      , vPressed = False
       }
     , canvasSize ()
     )
@@ -431,8 +433,8 @@ update msg model =
             case key.keyCode of
                 86 ->
                     -- v
-                    fromWorkspaceUpdate (Workspace.update Workspace.CycleLayers model.timeline.current) model
-                        |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
+                    update (Workspace Workspace.CycleLayers) model
+                        |> chainUpdate (\m -> ( { m | vPressed = True }, Cmd.none ))
 
                 16 ->
                     -- shift
@@ -485,6 +487,10 @@ update msg model =
                     -- ctrl
                     ( { model | ctrl = False }, Cmd.none )
 
+                86 ->
+                    -- v
+                    ( { model | vPressed = False }, Cmd.none )
+
                 90 ->
                     -- z
                     ( { model | zPressed = False }, Cmd.none )
@@ -498,6 +504,13 @@ update msg model =
 
         Workspace wsMsg ->
             fromWorkspaceUpdate (Workspace.update wsMsg model.timeline.current) model
+                |> (case wsMsg of
+                        Workspace.CycleLayers ->
+                            chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
+
+                        _ ->
+                            identity
+                   )
 
         Undo ->
             undo model
@@ -576,6 +589,8 @@ view model =
                             , div [ id "key-row-3" ]
                                 [ button [ activeClass model.zPressed, onClick Undo ] [ text "Undo", span [] [ text "z" ] ]
                                 , button [ activeClass model.xPressed, onClick Redo ] [ text "Redo", span [] [ text "x" ] ]
+                                , button [] [ text "", span [] [ text "c" ] ]
+                                , button [ activeClass model.vPressed, onClick <| Workspace Workspace.CycleLayers ] [ text "Cycle", span [] [ text "v" ] ]
                                 ]
                             , viewInfo model
                             ]
