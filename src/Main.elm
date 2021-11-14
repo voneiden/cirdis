@@ -8,7 +8,7 @@ import Common exposing (Point, chainUpdate)
 import Dict exposing (Dict)
 import File exposing (File)
 import File.Select as Select
-import Html exposing (Html, button, div, span, text)
+import Html exposing (Attribute, Html, button, div, span, text)
 import Html.Attributes exposing (class, id)
 import Html.Events exposing (onClick, onMouseEnter, onMouseLeave)
 import Html.Lazy exposing (lazy)
@@ -239,6 +239,8 @@ type Msg
     | KeyDown Key
     | KeyUp Key
     | Workspace Workspace.Msg
+    | Undo
+    | Redo
 
 
 type alias FileInfo =
@@ -454,13 +456,11 @@ update msg model =
 
                 90 ->
                     -- z
-                    undo model
-                        |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
+                    update Undo model
 
                 88 ->
                     -- x
-                    redo model
-                        |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
+                    update Redo model
 
                 _ ->
                     ( model, Cmd.none )
@@ -480,6 +480,14 @@ update msg model =
 
         Workspace wsMsg ->
             fromWorkspaceUpdate (Workspace.update wsMsg model.timeline.current) model
+
+        Undo ->
+            undo model
+                |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
+
+        Redo ->
+            redo model
+                |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
 
 
 
@@ -516,10 +524,37 @@ view model =
                         , div [ id "right-menu" ]
                             [ viewLayerList model.timeline.current.layers model.layers
                             , viewLayerSelect
-                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectTool Nothing ] [ text "Select" ] ]
-                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateThroughPadTool ] [ text "Create THT Pad/Via" ] ]
-                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateSurfacePadTool ] [ text "Create SMT Pad" ] ]
-                            , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateTraceTool [] ] [ text "Create Trace" ] ]
+                            , div [ id "key-row-0" ]
+                                [ button [] [ text "", span [] [ text "1" ] ]
+                                , button [] [ text "", span [] [ text "2" ] ]
+                                , button [] [ text "", span [] [ text "3" ] ]
+                                , button [] [ text "", span [] [ text "4" ] ]
+                                , button [] [ text "", span [] [ text "5" ] ]
+                                ]
+                            , div [ id "key-row-1" ]
+                                [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectTool Nothing ] [ text "Select", span [] [ text "q" ] ]
+                                ]
+                            , div [ id "key-row-2" ]
+                                [ button
+                                    [ activeClass <| activeTool model Workspace.CreateThroughPadTool
+                                    , onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateThroughPadTool
+                                    ]
+                                    [ text "THT", span [] [ text "a" ] ]
+                                , button
+                                    [ activeClass <| activeTool model Workspace.CreateSurfacePadTool
+                                    , onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateSurfacePadTool
+                                    ]
+                                    [ text "SMT", span [] [ text "s" ] ]
+                                , button
+                                    [ activeClass <| activeTool model (Workspace.CreateTraceTool [])
+                                    , onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateTraceTool []
+                                    ]
+                                    [ text "Trace", span [] [ text "d" ] ]
+                                ]
+                            , div [ id "key-row-3" ]
+                                [ button [ onClick Undo ] [ text "Undo", span [] [ text "z" ] ]
+                                , button [ onClick Redo ] [ text "Redo", span [] [ text "x" ] ]
+                                ]
                             , viewInfo model
                             ]
                         ]
@@ -528,6 +563,37 @@ view model =
             model
         ]
     }
+
+
+activeClass : Bool -> Attribute Msg
+activeClass isActive =
+    if isActive then
+        class "active"
+
+    else
+        class ""
+
+
+activeTool : Model -> Workspace.Tool -> Bool
+activeTool model tool =
+    case ( model.timeline.current.tool, tool ) of
+        ( Workspace.SelectTool _, Workspace.SelectTool _ ) ->
+            True
+
+        ( Workspace.CreateSurfacePadTool, Workspace.CreateSurfacePadTool ) ->
+            True
+
+        ( Workspace.CreateThroughPadTool, Workspace.CreateThroughPadTool ) ->
+            True
+
+        ( Workspace.CreateTraceTool _, Workspace.CreateTraceTool _ ) ->
+            True
+
+        ( Workspace.CreateZoneTool, Workspace.CreateZoneTool ) ->
+            True
+
+        _ ->
+            False
 
 
 viewWorkspace : Model -> List (Svg Msg)
