@@ -57,6 +57,8 @@ type alias Model =
     , lastMousePosition : MousePosition
     , canvasBoundingClientRect : BoundingClientRect
     , timeline : WorkspaceTimeline
+    , zPressed : Bool
+    , xPressed : Bool
     }
 
 
@@ -214,6 +216,8 @@ init _ =
       , lastMousePosition = MousePosition 0 0 0 0
       , canvasBoundingClientRect = BoundingClientRect 0 0 0 0 0
       , timeline = defaultWorkspaceTimeline
+      , zPressed = False
+      , xPressed = False
       }
     , canvasSize ()
     )
@@ -457,10 +461,12 @@ update msg model =
                 90 ->
                     -- z
                     update Undo model
+                        |> chainUpdate (\m -> ( { m | zPressed = True }, Cmd.none ))
 
                 88 ->
                     -- x
                     update Redo model
+                        |> chainUpdate (\m -> ( { m | xPressed = True }, Cmd.none ))
 
                 _ ->
                     ( model, Cmd.none )
@@ -474,6 +480,14 @@ update msg model =
                 17 ->
                     -- ctrl
                     ( { model | ctrl = False }, Cmd.none )
+
+                90 ->
+                    -- z
+                    ( { model | zPressed = False }, Cmd.none )
+
+                88 ->
+                    -- x
+                    ( { model | xPressed = False }, Cmd.none )
 
                 _ ->
                     ( model, Cmd.none )
@@ -529,10 +543,14 @@ view model =
                                 , button [] [ text "", span [] [ text "2" ] ]
                                 , button [] [ text "", span [] [ text "3" ] ]
                                 , button [] [ text "", span [] [ text "4" ] ]
-                                , button [] [ text "", span [] [ text "5" ] ]
                                 ]
                             , div [ id "key-row-1" ]
-                                [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectTool Nothing ] [ text "Select", span [] [ text "q" ] ]
+                                [ button
+                                    [ activeClass <| activeTool model (Workspace.SelectTool Nothing)
+                                    , onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectTool Nothing
+                                    ]
+                                    [ text "Select", span [] [ text "q" ] ]
+                                , button [] [ text "", span [] [ text "w" ] ]
                                 ]
                             , div [ id "key-row-2" ]
                                 [ button
@@ -552,8 +570,8 @@ view model =
                                     [ text "Trace", span [] [ text "d" ] ]
                                 ]
                             , div [ id "key-row-3" ]
-                                [ button [ onClick Undo ] [ text "Undo", span [] [ text "z" ] ]
-                                , button [ onClick Redo ] [ text "Redo", span [] [ text "x" ] ]
+                                [ button [ activeClass model.zPressed, onClick Undo ] [ text "Undo", span [] [ text "z" ] ]
+                                , button [ activeClass model.xPressed, onClick Redo ] [ text "Redo", span [] [ text "x" ] ]
                                 ]
                             , viewInfo model
                             ]
@@ -653,13 +671,17 @@ viewLayer model layer =
 
 viewLayerList : List Workspace.Layer -> Dict Int LayerData -> Html Msg
 viewLayerList wsLayers layers =
-    div [ class "layer-list" ] <|
-        List.filterMap
-            (\wsLayer ->
-                Dict.get wsLayer.id layers
-                    |> Maybe.map (\layer -> viewLayerControls wsLayer layer)
-            )
-            wsLayers
+    if List.isEmpty wsLayers then
+        div [ class "layer-list" ] [ text "No layers" ]
+
+    else
+        div [ class "layer-list" ] <|
+            List.filterMap
+                (\wsLayer ->
+                    Dict.get wsLayer.id layers
+                        |> Maybe.map (\layer -> viewLayerControls wsLayer layer)
+                )
+                wsLayers
 
 
 viewLayerControls : Workspace.Layer -> LayerData -> Html Msg
@@ -672,7 +694,7 @@ viewLayerControls wsLayer layer =
 
 viewLayerSelect : Html Msg
 viewLayerSelect =
-    div []
+    div [ id "import-layer" ]
         [ --input [ placeholder "New Layer", value title ] []
           button [ onClick <| GetLayerImage ] [ text <| "Import layer" ]
         ]

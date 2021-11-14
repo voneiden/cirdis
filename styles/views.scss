@@ -36,6 +36,29 @@ html, body {
   flex-basis: 250px;
   flex-grow: 0;
   background-color: $light-bg;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+#import-layer {
+  button {
+    border: 1px solid black;
+    background: $dark-bg;
+    color: white;
+    height: 50px;
+    width: 150px;
+    cursor: pointer;
+
+    &:active {
+      border: 1px solid $light-fg;
+    }
+  }
+
+  margin-top: 25px;
+  margin-bottom: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #key-row-0,
@@ -54,6 +77,7 @@ html, body {
     position: relative;
     margin-right: 10px;
 
+    &:active,
     &.active {
       border: 1px solid $light-fg;
     }
