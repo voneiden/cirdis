@@ -417,12 +417,12 @@ type ConductorSelection
     | TraceSegmentSelection SurfaceConductor Point Point
 
 
-update : Msg -> Model -> ( Model, Cmd Msg )
+update : Msg -> Model -> ( Model, Cmd Msg, Bool )
 update msg model =
     case msg of
         SetCursor point ( dx, dy ) dragging ->
             if dragging then
-                ( { model | cursor = point, transform = translateTransform model.transform dx dy }, Cmd.none )
+                ( { model | cursor = point, transform = translateTransform model.transform dx dy }, Cmd.none, False )
 
             else
                 case model.tool of
@@ -434,10 +434,11 @@ update msg model =
                         ( { model | cursor = point }
                             |> createTraceToHighlightNets (snapPoint :: cps)
                         , Cmd.none
+                        , False
                         )
 
                     _ ->
-                        ( { model | cursor = point }, Cmd.none )
+                        ( { model | cursor = point }, Cmd.none, False )
 
         LeftClick point ->
             let
@@ -445,7 +446,7 @@ update msg model =
                     snapTo model.snapDistance point model.conductors (activeLayerSurfaceConductors model)
             in
             if List.isEmpty model.layers then
-                ( model, Cmd.none )
+                ( model, Cmd.none, False )
 
             else
                 case model.tool of
@@ -460,6 +461,7 @@ update msg model =
                                     ( { model | tool = CreateTraceTool newPoints }
                                         |> createTraceToHighlightNets newPoints
                                     , Cmd.none
+                                    , True
                                     )
 
                                 else
@@ -474,11 +476,12 @@ update msg model =
                                                 |> resetTool
                                                 |> createTraceToHighlightNets newPoints
                                             , Cmd.none
+                                            , True
                                             )
 
                                         MergeConflict nets conductors ->
                                             -- TODO show somekind of conflict resolution thing
-                                            ( resetTool model, Cmd.none )
+                                            ( resetTool model, Cmd.none, True )
 
                                         MergeNoNet conductors ->
                                             let
@@ -491,6 +494,7 @@ update msg model =
                                                 |> incrementNextNetId
                                                 |> createTraceToHighlightNets newPoints
                                             , Cmd.none
+                                            , True
                                             )
 
                             FreePoint p t ->
@@ -499,34 +503,34 @@ update msg model =
                                         points ++ [ FreePoint p t ]
                                 in
                                 if List.isEmpty points then
-                                    ( model, Cmd.none )
+                                    ( model, Cmd.none, False )
 
                                 else
-                                    ( { model | tool = CreateTraceTool t2 }, Cmd.none )
+                                    ( { model | tool = CreateTraceTool t2 }, Cmd.none, False )
 
                     CreateThroughPadTool ->
-                        ( addThroughConductor (ThroughPad point model.radius) model, Cmd.none )
+                        ( addThroughConductor (ThroughPad point model.radius) model, Cmd.none, True )
 
                     CreateSurfacePadTool ->
-                        ( addSurfaceConductorNoNet (SurfacePad point (model.radius * 2)) model, Cmd.none )
+                        ( addSurfaceConductorNoNet (SurfacePad point (model.radius * 2)) model, Cmd.none, True )
 
                     _ ->
-                        ( model, Cmd.none )
+                        ( model, Cmd.none, False )
 
         ZoomDelta delta shiftPressed ->
             if shiftPressed then
                 case model.tool of
                     CreateThroughPadTool ->
-                        ( updateRadius delta model, Cmd.none )
+                        ( updateRadius delta model, Cmd.none, False )
 
                     CreateSurfacePadTool ->
-                        ( updateRadius delta model, Cmd.none )
+                        ( updateRadius delta model, Cmd.none, False )
 
                     _ ->
-                        ( model, Cmd.none )
+                        ( model, Cmd.none, False )
 
             else
-                ( { model | transform = zoomTransform model.transform delta }, Cmd.none )
+                ( { model | transform = zoomTransform model.transform delta }, Cmd.none, False )
 
         SetTool tool ->
             case ( tool, model.tool ) of
@@ -541,31 +545,32 @@ update msg model =
                                 )
                       }
                     , Cmd.none
+                    , False
                     )
 
                 _ ->
-                    ( { model | tool = tool }, Cmd.none )
+                    ( { model | tool = tool }, Cmd.none, False )
 
         ResetTool ->
-            ( resetTool model, Cmd.none )
+            ( resetTool model, Cmd.none, False )
 
         SetTransform transform ->
-            ( { model | transform = transform }, Cmd.none )
+            ( { model | transform = transform }, Cmd.none, False )
 
         CycleLayers ->
-            ( { model | layers = cycle model.layers }, Cmd.none )
+            ( { model | layers = cycle model.layers }, Cmd.none, False )
 
         AddLayer layerId ->
-            ( { model | layers = newLayer layerId :: model.layers }, Cmd.none )
+            ( { model | layers = newLayer layerId :: model.layers }, Cmd.none, True )
 
         Focus ->
-            ( { model | focused = True }, Cmd.none )
+            ( { model | focused = True }, Cmd.none, False )
 
         Unfocus ->
-            ( { model | focused = False }, Cmd.none )
+            ( { model | focused = False }, Cmd.none, False )
 
         ClickConductor conductorSelection ->
-            ( model, Cmd.none )
+            ( model, Cmd.none, False )
 
 
 createTraceToHighlightNets : List (ConstructionPoint Thickness) -> Model -> Model

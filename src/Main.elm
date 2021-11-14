@@ -56,7 +56,7 @@ type alias Model =
     , ctrl : Bool
     , lastMousePosition : MousePosition
     , canvasBoundingClientRect : BoundingClientRect
-    , workspace : Workspace.Model
+    , timeline : WorkspaceTimeline
     }
 
 
@@ -128,6 +128,83 @@ defaultBoundingClientRect =
     { x = 0, y = 0, width = 500, height = 500, top = 0 }
 
 
+{-| Timeline for implementing redo/undo.
+TODO: Would be neat to have decent branching here?
+-}
+type alias WorkspaceTimeline =
+    { current : Workspace.Model
+    , past : List Workspace.Model
+    , future : List Workspace.Model
+    }
+
+
+defaultWorkspaceTimeline : WorkspaceTimeline
+defaultWorkspaceTimeline =
+    { current = Workspace.defaultModel
+    , past = []
+    , future = []
+    }
+
+
+addTimelineEntry : WorkspaceTimeline -> Workspace.Model -> WorkspaceTimeline
+addTimelineEntry timeline next =
+    case timeline.future of
+        [] ->
+            { timeline | current = next, past = timeline.past ++ [ timeline.current ] }
+
+        future ->
+            { current = next
+            , past = timeline.past
+            , future = []
+            }
+
+
+undo : Model -> ( Model, Cmd Msg )
+undo model =
+    let
+        timeline =
+            model.timeline
+    in
+    case List.reverse timeline.past of
+        [] ->
+            ( model, Cmd.none )
+
+        previous :: older ->
+            ( { model
+                | timeline =
+                    { timeline
+                        | current = previous
+                        , past = List.reverse older
+                        , future = timeline.current :: timeline.future
+                    }
+              }
+            , Cmd.none
+            )
+
+
+redo : Model -> ( Model, Cmd Msg )
+redo model =
+    let
+        timeline =
+            model.timeline
+    in
+    case timeline.future of
+        [] ->
+            ( model, Cmd.none )
+
+        next :: newer ->
+            ( { model
+                | timeline =
+                    { timeline
+                        | current = next
+                        , past = timeline.past ++ [ timeline.current ]
+                        , future = newer
+                    }
+              }
+            , Cmd.none
+            )
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( { layers = Dict.empty
@@ -136,7 +213,7 @@ init _ =
       , ctrl = False
       , lastMousePosition = MousePosition 0 0 0 0
       , canvasBoundingClientRect = BoundingClientRect 0 0 0 0 0
-      , workspace = Workspace.defaultModel
+      , timeline = defaultWorkspaceTimeline
       }
     , canvasSize ()
     )
@@ -171,9 +248,17 @@ type alias FileInfo =
     }
 
 
-fromWorkspaceUpdate : ( Workspace.Model, Cmd Workspace.Msg ) -> Model -> ( Model, Cmd Msg )
-fromWorkspaceUpdate ( wsModel, wsCmd ) model =
-    ( { model | workspace = wsModel }, Cmd.map (\wsMsg -> Workspace wsMsg) wsCmd )
+fromWorkspaceUpdate : ( Workspace.Model, Cmd Workspace.Msg, Bool ) -> Model -> ( Model, Cmd Msg )
+fromWorkspaceUpdate ( wsModel, wsCmd, updateTimeline ) model =
+    if updateTimeline then
+        ( { model | timeline = addTimelineEntry model.timeline wsModel }, Cmd.map (\wsMsg -> Workspace wsMsg) wsCmd )
+
+    else
+        let
+            timeline =
+                model.timeline
+        in
+        ( { model | timeline = { timeline | current = wsModel } }, Cmd.map (\wsMsg -> Workspace wsMsg) wsCmd )
 
 
 fromWorkspaceView : Html Workspace.Msg -> Html Msg
@@ -213,7 +298,7 @@ update msg model =
                             , b64Data = b64
                             }
                     in
-                    fromWorkspaceUpdate (Workspace.update (Workspace.AddLayer layerId) model.workspace) model
+                    fromWorkspaceUpdate (Workspace.update (Workspace.AddLayer layerId) model.timeline.current) model
                         |> chainUpdate
                             (\m ->
                                 let
@@ -230,7 +315,7 @@ update msg model =
                             (\m ->
                                 ( m
                                 , Cmd.batch
-                                    [ setLayers ( List.filterMap (toExternalLayer m) m.workspace.layers, True )
+                                    [ setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, True )
                                     ]
                                 )
                             )
@@ -255,7 +340,7 @@ update msg model =
                             , z = max widthRatio heightRatio + 0.1
                             }
                     in
-                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTransform transform) model.workspace) model
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTransform transform) model.timeline.current) model
 
                 _ ->
                     ( model, Cmd.none )
@@ -264,29 +349,33 @@ update msg model =
             -- todo needs refactoring
             let
                 workspace =
-                    model.workspace
+                    model.timeline.current
             in
             ( { model
                 | layers = Dict.remove layerId model.layers
-                , workspace = { workspace | layers = List.filter (\l -> not <| l.id == layerId) workspace.layers }
+                , timeline =
+                    addTimelineEntry model.timeline
+                        { workspace
+                            | layers = List.filter (\l -> not <| l.id == layerId) workspace.layers
+                        }
               }
             , Cmd.none
             )
-                |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.workspace.layers, False ) ))
+                |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
 
         --( { model | layers = List.take index model.layers ++ List.drop (index + 1) model.layers }, Cmd.none )
         MouseDown mousePosition ->
             -- Middle mouse button starts drag
             let
                 cursor =
-                    mousePositionToPoint model.canvasBoundingClientRect model.workspace.transform mousePosition
+                    mousePositionToPoint model.canvasBoundingClientRect model.timeline.current.transform mousePosition
             in
             case mousePosition.button of
                 1 ->
                     ( { model | dragging = True }, Cmd.none )
 
                 0 ->
-                    fromWorkspaceUpdate (Workspace.update (Workspace.LeftClick cursor) model.workspace) model
+                    fromWorkspaceUpdate (Workspace.update (Workspace.LeftClick cursor) model.timeline.current) model
 
                 _ ->
                     ( model, Cmd.none )
@@ -302,7 +391,7 @@ update msg model =
         MouseMove mousePosition ->
             let
                 cursor =
-                    mousePositionToPoint model.canvasBoundingClientRect model.workspace.transform mousePosition
+                    mousePositionToPoint model.canvasBoundingClientRect model.timeline.current.transform mousePosition
 
                 dx =
                     model.lastMousePosition.offsetX - mousePosition.offsetX
@@ -310,19 +399,19 @@ update msg model =
                 dy =
                     model.lastMousePosition.offsetY - mousePosition.offsetY
             in
-            fromWorkspaceUpdate (Workspace.update (Workspace.SetCursor cursor ( dx, dy ) model.dragging) model.workspace) model
+            fromWorkspaceUpdate (Workspace.update (Workspace.SetCursor cursor ( dx, dy ) model.dragging) model.timeline.current) model
                 |> chainUpdate (\m -> ( { m | lastMousePosition = mousePosition }, Cmd.none ))
 
         MouseOver ->
-            fromWorkspaceUpdate (Workspace.update Workspace.Focus model.workspace) model
+            fromWorkspaceUpdate (Workspace.update Workspace.Focus model.timeline.current) model
                 |> chainUpdate (\m -> ( m, startWheel () ))
 
         MouseOut ->
-            fromWorkspaceUpdate (Workspace.update Workspace.Unfocus model.workspace) model
+            fromWorkspaceUpdate (Workspace.update Workspace.Unfocus model.timeline.current) model
                 |> chainUpdate (\m -> ( m, endWheel () ))
 
         MouseWheel delta ->
-            fromWorkspaceUpdate (Workspace.update (Workspace.ZoomDelta delta model.shift) model.workspace) model
+            fromWorkspaceUpdate (Workspace.update (Workspace.ZoomDelta delta model.shift) model.timeline.current) model
 
         Resize boundingClientRect ->
             -- TODO store this somewhere
@@ -332,8 +421,8 @@ update msg model =
             case key.keyCode of
                 86 ->
                     -- v
-                    fromWorkspaceUpdate (Workspace.update Workspace.CycleLayers model.workspace) model
-                        |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.workspace.layers, False ) ))
+                    fromWorkspaceUpdate (Workspace.update Workspace.CycleLayers model.timeline.current) model
+                        |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
 
                 16 ->
                     -- shift
@@ -345,23 +434,33 @@ update msg model =
 
                 27 ->
                     -- esc
-                    fromWorkspaceUpdate (Workspace.update Workspace.ResetTool model.workspace) model
+                    fromWorkspaceUpdate (Workspace.update Workspace.ResetTool model.timeline.current) model
 
                 81 ->
                     -- q
-                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool (Workspace.SelectTool Nothing)) model.workspace) model
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool (Workspace.SelectTool Nothing)) model.timeline.current) model
 
                 65 ->
                     -- a
-                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool Workspace.CreateThroughPadTool) model.workspace) model
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool Workspace.CreateThroughPadTool) model.timeline.current) model
 
                 83 ->
                     -- s
-                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool Workspace.CreateSurfacePadTool) model.workspace) model
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool Workspace.CreateSurfacePadTool) model.timeline.current) model
 
                 68 ->
                     -- d
-                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool (Workspace.CreateTraceTool [])) model.workspace) model
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetTool (Workspace.CreateTraceTool [])) model.timeline.current) model
+
+                90 ->
+                    -- z
+                    undo model
+                        |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
+
+                88 ->
+                    -- x
+                    redo model
+                        |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
 
                 _ ->
                     ( model, Cmd.none )
@@ -380,7 +479,7 @@ update msg model =
                     ( model, Cmd.none )
 
         Workspace wsMsg ->
-            fromWorkspaceUpdate (Workspace.update wsMsg model.workspace) model
+            fromWorkspaceUpdate (Workspace.update wsMsg model.timeline.current) model
 
 
 
@@ -405,17 +504,17 @@ view model =
                             [ Svg.svg
                                 [ SvgA.id "canvas"
                                 , SvgE.preventDefaultOn "mousedown" (Decode.map (\msg -> ( msg, True )) (Decode.map MouseDown decodeMousePosition))
-                                , SvgA.viewBox <| transformToViewBox model.canvasBoundingClientRect model.workspace.transform
+                                , SvgA.viewBox <| transformToViewBox model.canvasBoundingClientRect model.timeline.current.transform
                                 , SvgA.preserveAspectRatio "slice"
                                 ]
-                                --[ Maybe.withDefault (text "") <| Maybe.map (viewLayer model) <| List.head model.workspace.layers
+                                --[ Maybe.withDefault (text "") <| Maybe.map (viewLayer model) <| List.head model.timeline.current.layers
                                 --]
                                 ([ Svg.g [ SvgA.id "cirdis-layers-mountpoint" ] [] ]
                                     ++ viewWorkspace model
                                 )
                             ]
                         , div [ id "right-menu" ]
-                            [ viewLayerList model.workspace.layers model.layers
+                            [ viewLayerList model.timeline.current.layers model.layers
                             , viewLayerSelect
                             , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectTool Nothing ] [ text "Select" ] ]
                             , div [] [ button [ onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateThroughPadTool ] [ text "Create THT Pad/Via" ] ]
@@ -433,14 +532,14 @@ view model =
 
 viewWorkspace : Model -> List (Svg Msg)
 viewWorkspace model =
-    if List.isEmpty model.workspace.layers then
+    if List.isEmpty model.timeline.current.layers then
         []
 
     else
-        [ fromWorkspaceSvg (Workspace.viewTool model.workspace)
+        [ fromWorkspaceSvg (Workspace.viewTool model.timeline.current)
         ]
-            ++ List.map fromWorkspaceSvg (Workspace.viewMaybeLayerSurfaceConductors model.workspace.highlightNets (List.head model.workspace.layers))
-            ++ List.map fromWorkspaceSvg (List.map (Workspace.viewThroughConductor model.workspace.highlightNets) model.workspace.conductors)
+            ++ List.map fromWorkspaceSvg (Workspace.viewMaybeLayerSurfaceConductors model.timeline.current.highlightNets (List.head model.timeline.current.layers))
+            ++ List.map fromWorkspaceSvg (List.map (Workspace.viewThroughConductor model.timeline.current.highlightNets) model.timeline.current.conductors)
 
 
 {-| Convert a Transform into a SVG viewBox attribute value
@@ -517,22 +616,22 @@ viewInfo : Model -> Html Msg
 viewInfo model =
     let
         content =
-            if List.isEmpty model.workspace.layers then
+            if List.isEmpty model.timeline.current.layers then
                 text "Start by importing a new layer!"
 
             else
-                case model.workspace.tool of
+                case model.timeline.current.tool of
                     Workspace.SelectTool maybeConductor ->
                         text "Info about selection"
 
                     Workspace.CreateTraceTool constructionPoints ->
-                        text <| "Trace thickness: " ++ String.fromFloat model.workspace.thickness
+                        text <| "Trace thickness: " ++ String.fromFloat model.timeline.current.thickness
 
                     Workspace.CreateSurfacePadTool ->
-                        text <| "Pad size: " ++ (String.fromFloat <| model.workspace.radius * 2)
+                        text <| "Pad size: " ++ (String.fromFloat <| model.timeline.current.radius * 2)
 
                     Workspace.CreateThroughPadTool ->
-                        text <| "Pad radius:: " ++ String.fromFloat model.workspace.radius
+                        text <| "Pad radius:: " ++ String.fromFloat model.timeline.current.radius
 
                     Workspace.CreateZoneTool ->
                         text "Zone tool"
