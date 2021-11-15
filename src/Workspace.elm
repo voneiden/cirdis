@@ -1,6 +1,7 @@
 module Workspace exposing (..)
 
 import Common exposing (Dragging, Point, Radius, ShiftPressed, Thickness, Width, cycle, distanceToPoint, fromPoint, unique)
+import Html exposing (Attribute)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
 import Svg.Events as SvgE
@@ -740,7 +741,7 @@ viewTool model =
             viewThroughConductor model.highlightNets <| ThroughPad model.cursor model.radius (NoNet model.nextNetId)
 
         CreateSurfacePadTool ->
-            viewSurfaceConductor model.highlightNets <| SurfacePad model.cursor (model.radius * 2) (NoNet model.nextNetId)
+            viewSurfaceConductor model.highlightNets False <| SurfacePad model.cursor (model.radius * 2) (NoNet model.nextNetId)
 
         _ ->
             Svg.text ""
@@ -760,33 +761,68 @@ viewThroughConductor highlightNets throughConductor =
                 []
 
 
-viewSurfaceConductor : List Net -> SurfaceConductor -> Svg Msg
-viewSurfaceConductor highlightNets surfaceConductor =
+viewSurfaceConductors : List Net -> List Layer -> List (Svg Msg)
+viewSurfaceConductors highlightNets layers =
+    case layers of
+        layer :: hiddenLayers ->
+            let
+                highlightedHiddenSurfaceConductors =
+                    List.concatMap .conductors hiddenLayers
+                        |> List.filter (\c -> List.member (surfaceConductorNet c) highlightNets)
+            in
+            List.map (viewSurfaceConductor highlightNets False) layer.conductors
+                ++ List.map (viewSurfaceConductor highlightNets True) highlightedHiddenSurfaceConductors
+
+        [] ->
+            []
+
+
+viewSurfaceConductor : List Net -> Bool -> SurfaceConductor -> Svg Msg
+viewSurfaceConductor highlightNets hidden surfaceConductor =
     case surfaceConductor of
         Trace tracePoints net ->
-            viewTrace (\p1 p2 -> ClickConductor (TraceSegmentSelection surfaceConductor p1 p2)) (netColor highlightNets net) tracePoints
+            let
+                attrs =
+                    if hidden then
+                        [ SvgA.strokeDasharray "5,15" ]
+
+                    else
+                        []
+            in
+            viewTrace (\p1 p2 -> ClickConductor (TraceSegmentSelection surfaceConductor p1 p2)) (netColor highlightNets net) attrs tracePoints
 
         SurfacePad point width net ->
             let
                 half =
                     width / 2
+
+                attrs =
+                    if hidden then
+                        [ SvgA.stroke <| netColor highlightNets net
+                        , SvgA.strokeWidth "2px"
+                        , SvgA.fill "none"
+                        ]
+
+                    else
+                        [ SvgA.fill <| netColor highlightNets net ]
             in
             Svg.rect
-                [ SvgA.x <| String.fromFloat (point.x - half)
-                , SvgA.y <| String.fromFloat (point.y - half)
-                , SvgA.width <| String.fromFloat width
-                , SvgA.height <| String.fromFloat width
-                , SvgA.fill <| netColor highlightNets net
-                ]
+                ([ SvgA.x <| String.fromFloat (point.x - half)
+                 , SvgA.y <| String.fromFloat (point.y - half)
+                 , SvgA.width <| String.fromFloat width
+                 , SvgA.height <| String.fromFloat width
+                 ]
+                    ++ attrs
+                )
                 []
 
         Zone points net ->
             Svg.text "ZONE"
 
 
-viewTrace : (Point -> Point -> Msg) -> String -> List TracePoint -> Svg Msg
-viewTrace toClickMsg color points =
-    Svg.g [] (viewTraceSegmented (Just toClickMsg) color points)
+viewTrace : (Point -> Point -> Msg) -> String -> List (Attribute Msg) -> List TracePoint -> Svg Msg
+viewTrace toClickMsg color attrs points =
+    Svg.g [] (viewTraceSegmented (Just toClickMsg) color attrs points)
 
 
 viewTraceWithConstruction : Model -> List TracePoint -> Svg Msg
@@ -800,7 +836,7 @@ viewTraceWithConstruction model points =
                 []
     in
     Svg.g [] <|
-        viewTraceSegmented Nothing (netColor [] (NoNet 0)) points
+        viewTraceSegmented Nothing (netColor [] (NoNet 0)) [] points
             ++ constructionTrace
 
 
@@ -838,8 +874,8 @@ viewCrosshair point =
         ]
 
 
-viewTraceSegment : Maybe (Point -> Point -> Msg) -> String -> TracePoint -> TracePoint -> Svg Msg
-viewTraceSegment maybeToClickMsg color start end =
+viewTraceSegment : Maybe (Point -> Point -> Msg) -> String -> List (Attribute Msg) -> TracePoint -> TracePoint -> Svg Msg
+viewTraceSegment maybeToClickMsg color attrs start end =
     let
         d =
             SvgA.d <|
@@ -856,15 +892,16 @@ viewTraceSegment maybeToClickMsg color start end =
          , SvgA.strokeLinecap "round"
          ]
             ++ Maybe.withDefault [] (Maybe.map (\f -> [ SvgE.onClick (f start.point end.point) ]) maybeToClickMsg)
+            ++ attrs
         )
         []
 
 
-viewTraceSegmented : Maybe (Point -> Point -> Msg) -> String -> List TracePoint -> List (Svg Msg)
-viewTraceSegmented maybeToClickMsg color tracePoints =
+viewTraceSegmented : Maybe (Point -> Point -> Msg) -> String -> List (Attribute Msg) -> List TracePoint -> List (Svg Msg)
+viewTraceSegmented maybeToClickMsg color attrs tracePoints =
     case tracePoints of
         start :: end :: rest ->
-            viewTraceSegment maybeToClickMsg color start end :: viewTraceSegmented maybeToClickMsg color (end :: rest)
+            viewTraceSegment maybeToClickMsg color attrs start end :: viewTraceSegmented maybeToClickMsg color attrs (end :: rest)
 
         _ ->
             [ Svg.text "" ]
@@ -890,22 +927,12 @@ viewConstructionTrace model tracePoints =
     in
     case List.reverse tracePoints of
         last :: _ ->
-            [ viewTraceSegment Nothing (netColor [] (NoNet 0)) last (pointToTracePoint point model.thickness)
+            [ viewTraceSegment Nothing (netColor [] (NoNet 0)) [] last (pointToTracePoint point model.thickness)
             , viewCrosshair cp
             ]
 
         _ ->
             [ viewCrosshair cp ]
-
-
-viewMaybeLayerSurfaceConductors : List Net -> Maybe Layer -> List (Svg Msg)
-viewMaybeLayerSurfaceConductors highlightNets maybeLayer =
-    case maybeLayer of
-        Just layer ->
-            List.map (viewSurfaceConductor highlightNets) layer.conductors
-
-        Nothing ->
-            []
 
 
 

@@ -641,7 +641,7 @@ viewWorkspace model =
     else
         [ fromWorkspaceSvg (Workspace.viewTool model.timeline.current)
         ]
-            ++ List.map fromWorkspaceSvg (Workspace.viewMaybeLayerSurfaceConductors model.timeline.current.highlightNets (List.head model.timeline.current.layers))
+            ++ List.map fromWorkspaceSvg (Workspace.viewSurfaceConductors model.timeline.current.highlightNets model.timeline.current.layers)
             ++ List.map fromWorkspaceSvg (List.map (Workspace.viewThroughConductor model.timeline.current.highlightNets) model.timeline.current.conductors)
 
 
