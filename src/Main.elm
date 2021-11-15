@@ -2,7 +2,7 @@ port module Main exposing (..)
 
 import Base64
 import Browser exposing (Document)
-import Browser.Events exposing (onKeyDown, onKeyUp, onMouseUp)
+import Browser.Events exposing (onKeyUp, onMouseUp)
 import Bytes exposing (Bytes)
 import Common exposing (Point, chainUpdate)
 import Dict exposing (Dict)
@@ -785,14 +785,19 @@ subscriptions _ =
         , wheel MouseWheel
         , resize Resize
         , imageInformation GotImageInformation
-        , onKeyDown (decodeKey |> Decode.map KeyDown)
+
+        --, onKeyDown (decodeKey |> Decode.map KeyDown)
         , onKeyUp (decodeKey |> Decode.map KeyUp)
         , onMouseUp (Decode.map MouseUp decodeMousePosition)
+        , keyDown KeyDown
         ]
 
 
 
 -- PORTS
+
+
+port keyDown : (Key -> msg) -> Sub msg
 
 
 port mouseDrag : (MousePosition -> msg) -> Sub msg

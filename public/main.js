@@ -92,6 +92,18 @@ cirdis.ports.canvasSize.subscribe(() => {
 
 })
 
+const ignoreKeyCodes = [116]
+document.addEventListener('keydown', (e) => {
+  if (ignoreKeyCodes.includes(e.keyCode)) {
+    return
+  }
+  cirdis.ports.keyDown.send({
+    keyCode: e.keyCode,
+    shift: e.shiftKey,
+    ctrl: e.ctrlKey
+  })
+  e.preventDefault()
+})
 
 const checkImages = function checkImages(retryAttempt) {
   const images = Array.from(document.querySelectorAll("svg image"))
