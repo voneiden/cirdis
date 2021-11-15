@@ -8,8 +8,18 @@ const cirdis = Cirdis.Main.init({})
 let lastMouseMove = 0;
 let delayedDeliver = null;
 let sendDrag = false;
-
 const onMouseMove = function onMouseMove(e) {
+  // Create a separate object from the event to avoid breaking firefox
+  return onMouseDrag({
+    button: e.button,
+    timeStamp: e.timeStamp,
+    offsetX: e.offsetX,
+    offsetY: e.offsetY,
+    target: e.target
+  })
+}
+
+const onMouseDrag = function onMouseDrag(e) {
   if (delayedDeliver) {
     window.clearTimeout(delayedDeliver)
     delayedDeliver = null
@@ -20,7 +30,7 @@ const onMouseMove = function onMouseMove(e) {
   // Or remove this completely as it's no longer that cpu heavy..
   const timeSinceLastDeliveredEvent = now - lastMouseMove
   if (timeSinceLastDeliveredEvent < 33) {
-    delayedDeliver = window.setTimeout( () => onMouseMove(e) , 34 - timeSinceLastDeliveredEvent)
+    delayedDeliver = window.setTimeout( () => onMouseDrag(e) , 34 - timeSinceLastDeliveredEvent)
     return;
   }
   const canvas = document.getElementById('canvas')
@@ -35,7 +45,6 @@ document.addEventListener("mousemove", onMouseMove)
 document.addEventListener("mouseup", () => {
   sendDrag = false;
 })
-
 
 // Scroll throttling
 let lastWheel = 0;
