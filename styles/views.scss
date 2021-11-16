@@ -52,6 +52,10 @@ html, body {
     &:active {
       border: 1px solid $light-fg;
     }
+
+    &:focus-visible {
+      outline: none;
+    }
   }
 
   margin-top: 25px;
@@ -80,6 +84,10 @@ html, body {
     &:active,
     &.active {
       border: 1px solid $light-fg;
+    }
+
+    &:focus-visible {
+      outline: none;
     }
 
     span {
