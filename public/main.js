@@ -101,7 +101,7 @@ cirdis.ports.canvasSize.subscribe(() => {
 })
 
 const ignoreKeyCodes = [116]
-const ignoreCtrlKeyCodes = [82]
+const ignoreCtrlKeyCodes = [82, 48]
 document.addEventListener('keydown', (e) => {
   if (ignoreKeyCodes.includes(e.keyCode)) {
     return
