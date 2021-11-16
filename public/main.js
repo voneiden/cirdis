@@ -30,7 +30,7 @@ const onMouseDrag = function onMouseDrag(e) {
   // Or remove this completely as it's no longer that cpu heavy..
   const timeSinceLastDeliveredEvent = now - lastMouseMove
   if (timeSinceLastDeliveredEvent < 33) {
-    delayedDeliver = window.setTimeout( () => onMouseDrag(e) , 34 - timeSinceLastDeliveredEvent)
+    delayedDeliver = window.setTimeout(() => onMouseDrag(e), 34 - timeSinceLastDeliveredEvent)
     return;
   }
   const canvas = document.getElementById('canvas')
@@ -52,7 +52,15 @@ let sendWheel = false;
 let deltaWheel = 0;
 document.addEventListener("wheel", (e) => {
   let now = Date.now();
-  deltaWheel += e.deltaY
+
+  // on MacOS when shift is pressed it reports deltaX instead of deltaY
+  // so we can check if shift is pressed and deltaY is 0, then use deltaX
+  if (e.shiftKey && e.deltaY === 0) {
+    deltaWheel += e.deltaX
+  } else {
+    deltaWheel += e.deltaY
+  }
+  console.log(e.shiftKey, e.deltaY, e.deltaX)
   if (now - lastWheel < 33 || !sendWheel) {
     return;
   }
