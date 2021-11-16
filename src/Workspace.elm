@@ -571,7 +571,12 @@ update msg model =
             ( { model | focused = False }, Cmd.none, False )
 
         ClickConductor conductorSelection ->
-            ( model, Cmd.none, False )
+            case conductorSelection of
+                ConductorSelection conductor ->
+                    ( { model | highlightNets = [ conductorNet conductor ] }, Cmd.none, False )
+
+                TraceSegmentSelection surfaceConductor p1 p2 ->
+                    ( { model | highlightNets = [ surfaceConductorNet surfaceConductor ] }, Cmd.none, False )
 
 
 createTraceToHighlightNets : List (ConstructionPoint Thickness) -> Model -> Model
@@ -747,6 +752,25 @@ viewTool model =
             Svg.text ""
 
 
+toolToString : Tool -> String
+toolToString tool =
+    case tool of
+        SelectTool _ ->
+            "select"
+
+        CreateTraceTool _ ->
+            "trace"
+
+        CreateSurfacePadTool ->
+            "surface"
+
+        CreateThroughPadTool ->
+            "through"
+
+        CreateZoneTool ->
+            "zone"
+
+
 viewThroughConductor : List Net -> ThroughConductor -> Svg Msg
 viewThroughConductor highlightNets throughConductor =
     case throughConductor of
@@ -757,6 +781,7 @@ viewThroughConductor highlightNets throughConductor =
                 , SvgA.r <| String.fromFloat radius
                 , SvgA.fill (netColor highlightNets net)
                 , SvgE.onClick (ClickConductor (ConductorSelection (Through throughConductor)))
+                , SvgA.class "clickable"
                 ]
                 []
 
@@ -891,7 +916,7 @@ viewTraceSegment maybeToClickMsg color attrs start end =
          , SvgA.strokeWidth (String.fromFloat start.thickness)
          , SvgA.strokeLinecap "round"
          ]
-            ++ Maybe.withDefault [] (Maybe.map (\f -> [ SvgE.onClick (f start.point end.point) ]) maybeToClickMsg)
+            ++ Maybe.withDefault [] (Maybe.map (\f -> [ SvgE.onClick (f start.point end.point), SvgA.class "clickable" ]) maybeToClickMsg)
             ++ attrs
         )
         []

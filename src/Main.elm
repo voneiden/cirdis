@@ -545,6 +545,7 @@ view model =
                                 , SvgE.preventDefaultOn "mousedown" (Decode.map (\msg -> ( msg, True )) (Decode.map MouseDown decodeMousePosition))
                                 , SvgA.viewBox <| transformToViewBox model.canvasBoundingClientRect model.timeline.current.transform
                                 , SvgA.preserveAspectRatio "slice"
+                                , SvgA.class <| "tool-" ++ Workspace.toolToString model.timeline.current.tool
                                 ]
                                 --[ Maybe.withDefault (text "") <| Maybe.map (viewLayer model) <| List.head model.timeline.current.layers
                                 --]

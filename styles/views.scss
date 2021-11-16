@@ -113,3 +113,9 @@ html, body {
   margin-top: 10px;
   margin-left: 30px;
 }
+
+svg.tool-select {
+  .clickable {
+    cursor: pointer;
+  }
+}
