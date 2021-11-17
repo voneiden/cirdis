@@ -25,6 +25,7 @@ type alias Model =
     , snapDistance : Float
     , autoNetColor : String
     , highlightNets : List Net
+    , selection : List ConductorSelection
     }
 
 
@@ -43,6 +44,7 @@ defaultModel =
     , snapDistance = 10
     , autoNetColor = ""
     , highlightNets = []
+    , selection = []
     }
 
 
@@ -565,11 +567,20 @@ update msg model =
 
         ClickConductor conductorSelection ->
             case conductorSelection of
-                ConductorSelection conductor ->
-                    ( { model | highlightNets = [ conductorNet conductor ] }, Cmd.none, False )
+                ConductorSelection _ ->
+                    ( { model | selection = [ conductorSelection ] }, Cmd.none, False )
 
                 TraceSegmentSelection surfaceConductor p1 p2 ->
-                    ( { model | highlightNets = [ surfaceConductorNet surfaceConductor ] }, Cmd.none, False )
+                    let
+                        cs = ConductorSelection (Surface surfaceConductor)
+                    in
+                    if List.member cs model.selection then
+                        ({ model | selection =
+                            List.filter (\x -> x == cs) model.selection
+                            |> List.append [conductorSelection]
+                        }, Cmd.none, True)
+                    else
+                        ( { model | selection = [ conductorSelection ] }, Cmd.none, False )
 
 
 createTraceToHighlightNets : List (ConstructionPoint Thickness) -> Model -> Model
