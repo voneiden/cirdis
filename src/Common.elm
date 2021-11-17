@@ -11,6 +11,14 @@ type alias Radius =
     Float
 
 
+type alias Color =
+    String
+
+
+type alias Hidden =
+    Bool
+
+
 type alias Thickness =
     Float
 

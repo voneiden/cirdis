@@ -647,8 +647,8 @@ viewWorkspace model =
     else
         [ fromWorkspaceSvg (Workspace.viewTool model.timeline.current)
         ]
-            ++ List.map fromWorkspaceSvg (Workspace.viewSurfaceConductors model.timeline.current.highlightNets model.timeline.current.layers)
-            ++ List.map fromWorkspaceSvg (List.map (Workspace.viewThroughConductor model.timeline.current.highlightNets) model.timeline.current.conductors)
+            ++ List.map fromWorkspaceSvg (Workspace.viewSurfaceConductors model.timeline.current model.timeline.current.layers)
+            ++ List.map fromWorkspaceSvg (List.concatMap (List.map (Workspace.viewVisualElement model.timeline.current) << Workspace.throughConductorToVisualElement) model.timeline.current.conductors)
 
 
 {-| Convert a Transform into a SVG viewBox attribute value

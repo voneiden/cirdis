@@ -1,6 +1,6 @@
 module Workspace exposing (..)
 
-import Common exposing (Dragging, Point, Radius, ShiftPressed, Thickness, Width, cycle, distanceToPoint, fromPoint, unique)
+import Common exposing (Color, Dragging, Point, Radius, ShiftPressed, Thickness, Width, cycle, distanceToPoint, fromPoint, unique)
 import Html exposing (Attribute)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
@@ -25,7 +25,7 @@ type alias Model =
     , snapDistance : Float
     , autoNetColor : String
     , highlightNets : List Net
-    , selection : List ConductorSelection
+    , select : List VisualElement
     }
 
 
@@ -44,7 +44,7 @@ defaultModel =
     , snapDistance = 10
     , autoNetColor = ""
     , highlightNets = []
-    , selection = []
+    , select = []
     }
 
 
@@ -121,32 +121,6 @@ type Net
     | CustomNet String String
 
 
-netColor : List Net -> Net -> String
-netColor highlightedNets net =
-    if List.member net highlightedNets then
-        case net of
-            NoNet _ ->
-                "cyan"
-
-            AutoNet _ ->
-                "cyan"
-
-            CustomNet _ c ->
-                "cyan"
-        -- todo?
-
-    else
-        case net of
-            NoNet _ ->
-                "red"
-
-            AutoNet _ ->
-                "grey"
-
-            CustomNet _ c ->
-                c
-
-
 netsConductors : Model -> List Net -> List Conductor
 netsConductors model nets =
     List.filter (\c -> List.member (conductorNet c) nets) (allConductors model)
@@ -214,6 +188,205 @@ type SurfaceConductor
     = Trace (List TracePoint) Net
     | SurfacePad Point Width Net
     | Zone (List Point) Net
+
+
+type alias ColorDefinition =
+    { stroke : String
+    , fill : String
+    }
+
+
+type VisualElement
+    = Circle Conductor Point Radius
+    | ConstructionCircle Point Radius
+    | Square Conductor Point Width
+    | SquareOutline Conductor Point Width
+    | ConstructionSquare Point Width
+    | Line Conductor Point Point Thickness
+    | DashedLine Conductor Point Point Thickness
+    | ConstructionLine Point Point Thickness
+
+
+elementConductor : VisualElement -> Maybe Conductor
+elementConductor element =
+    case element of
+        Circle conductor _ _ ->
+            Just conductor
+
+        ConstructionCircle _ _ ->
+            Nothing
+
+        Square conductor _ _ ->
+            Just conductor
+
+        SquareOutline conductor _ _ ->
+            Just conductor
+
+        ConstructionSquare _ _ ->
+            Nothing
+
+        Line conductor _ _ _ ->
+            Just conductor
+
+        DashedLine conductor _ _ _ ->
+            Just conductor
+
+        ConstructionLine _ _ _ ->
+            Nothing
+
+
+viewVisualElement : AppearanceDerivation a -> VisualElement -> Svg Msg
+viewVisualElement model element =
+    case element of
+        Circle _ point radius ->
+            viewCircle point
+                radius
+                [ SvgA.fill (deriveColor model element)
+                , SvgE.onClick (ClickVisualElement element)
+                , SvgA.class "clickable"
+                ]
+
+        ConstructionCircle point radius ->
+            viewCircle point
+                radius
+                [ SvgA.stroke (deriveColor model element)
+                , SvgA.fill "none"
+                ]
+
+        Square c point width ->
+            viewSquare point
+                width
+                [ SvgA.fill <| deriveColor model element
+                ]
+
+        SquareOutline c point width ->
+            viewSquare point
+                width
+                [ SvgA.stroke <| deriveColor model element
+                , SvgA.strokeWidth "2px"
+                , SvgA.fill "none"
+                ]
+
+        ConstructionSquare point width ->
+            viewSquare point
+                width
+                [ SvgA.stroke <| deriveColor model element
+                , SvgA.strokeWidth "2px"
+                , SvgA.fill "none"
+                ]
+
+        Line c p1 p2 thickness ->
+            viewLine p1
+                p2
+                thickness
+                [ SvgA.stroke <| deriveColor model element
+                , SvgE.onClick (ClickVisualElement element)
+                , SvgA.class "clickable"
+                ]
+
+        DashedLine c p1 p2 thickness ->
+            viewLine p1
+                p2
+                thickness
+                [ SvgA.stroke <| deriveColor model element
+                , SvgE.onClick (ClickVisualElement element)
+                , SvgA.class "clickable"
+                , SvgA.strokeDasharray "5,15"
+                ]
+
+        ConstructionLine p1 p2 thickness ->
+            viewLine p1
+                p2
+                thickness
+                [ SvgA.stroke <| deriveColor model element
+                ]
+
+
+viewCircle : Point -> Radius -> List (Svg.Attribute Msg) -> Svg Msg
+viewCircle point radius attrs =
+    Svg.circle
+        ([ SvgA.cx <| String.fromFloat point.x
+         , SvgA.cy <| String.fromFloat point.y
+         , SvgA.r <| String.fromFloat radius
+         ]
+            ++ attrs
+        )
+        []
+
+
+viewSquare point width attrs =
+    let
+        half =
+            width / 2
+    in
+    Svg.rect
+        ([ SvgA.x <| String.fromFloat (point.x - half)
+         , SvgA.y <| String.fromFloat (point.y - half)
+         , SvgA.width <| String.fromFloat width
+         , SvgA.height <| String.fromFloat width
+         ]
+            ++ attrs
+        )
+        []
+
+
+viewLine p1 p2 thickness attrs =
+    let
+        d =
+            SvgA.d <|
+                String.join " " <|
+                    [ fromPoint "M" p1
+                    , fromPoint "L" p2
+                    ]
+    in
+    Svg.path
+        ([ d
+         , SvgA.fill "none"
+         , SvgA.strokeWidth (String.fromFloat thickness)
+         , SvgA.strokeLinecap "round"
+         ]
+            ++ attrs
+        )
+        []
+
+
+conductorToVisualElement : Conductor -> List VisualElement
+conductorToVisualElement conductor =
+    case conductor of
+        Surface surfaceConductor ->
+            surfaceConductorToVisualElement False surfaceConductor
+
+        Through throughConductor ->
+            throughConductorToVisualElement throughConductor
+
+
+throughConductorToVisualElement : ThroughConductor -> List VisualElement
+throughConductorToVisualElement throughConductor =
+    case throughConductor of
+        ThroughPad point radius net ->
+            [ Circle (Through throughConductor) point radius ]
+
+
+surfaceConductorToVisualElement : Bool -> SurfaceConductor -> List VisualElement
+surfaceConductorToVisualElement hidden surfaceConductor =
+    let
+        c =
+            Surface surfaceConductor
+    in
+    case ( hidden, surfaceConductor ) of
+        ( _, Trace tracePoints net ) ->
+            [ Circle c { x = 0, y = 0 } 5 ]
+
+        -- todo
+        ( False, SurfacePad point width net ) ->
+            [ Square c point width ]
+
+        ( True, SurfacePad point width net ) ->
+            [ SquareOutline c point width ]
+
+        ( _, Zone points net ) ->
+            -- TODO
+            []
 
 
 surfaceConductorNet : SurfaceConductor -> Net
@@ -390,6 +563,53 @@ mergeNets model snappedConductors =
             MergeNoNet conductors
 
 
+type alias AppearanceDerivation a =
+    { a | highlightNets : List Net, select : List VisualElement }
+
+
+deriveColor : AppearanceDerivation a -> VisualElement -> String
+deriveColor model element =
+    let
+        net =
+            elementConductor element
+                |> Maybe.map conductorNet
+                |> Maybe.withDefault (NoNet 0)
+    in
+    if List.member element model.select then
+        case net of
+            NoNet _ ->
+                "cyan"
+
+            AutoNet _ ->
+                "cyan"
+
+            CustomNet _ c ->
+                "cyan"
+
+    else if List.member net model.highlightNets then
+        case net of
+            NoNet _ ->
+                "cyan"
+
+            AutoNet _ ->
+                "cyan"
+
+            CustomNet _ c ->
+                "cyan"
+        -- todo?
+
+    else
+        case net of
+            NoNet _ ->
+                "red"
+
+            AutoNet _ ->
+                "grey"
+
+            CustomNet _ c ->
+                c
+
+
 
 -- UPDATE
 
@@ -405,12 +625,7 @@ type Msg
     | CycleLayers
     | Focus
     | Unfocus
-    | ClickConductor ConductorSelection
-
-
-type ConductorSelection
-    = ConductorSelection Conductor
-    | TraceSegmentSelection SurfaceConductor Point Point
+    | ClickVisualElement VisualElement
 
 
 update : Msg -> Model -> ( Model, Cmd Msg, Bool )
@@ -565,22 +780,55 @@ update msg model =
         Unfocus ->
             ( { model | focused = False }, Cmd.none, False )
 
-        ClickConductor conductorSelection ->
-            case conductorSelection of
-                ConductorSelection _ ->
-                    ( { model | selection = [ conductorSelection ] }, Cmd.none, False )
+        ClickVisualElement element ->
+            case element of
+                Circle conductor point radius ->
+                    ( model, Cmd.none, True )
 
-                TraceSegmentSelection surfaceConductor p1 p2 ->
-                    let
-                        cs = ConductorSelection (Surface surfaceConductor)
-                    in
-                    if List.member cs model.selection then
-                        ({ model | selection =
-                            List.filter (\x -> x == cs) model.selection
-                            |> List.append [conductorSelection]
-                        }, Cmd.none, True)
-                    else
-                        ( { model | selection = [ conductorSelection ] }, Cmd.none, False )
+                -- TODO
+                ConstructionCircle point radius ->
+                    ( model, Cmd.none, True )
+
+                Square conductor point width ->
+                    ( model, Cmd.none, True )
+
+                SquareOutline conductor point width ->
+                    ( model, Cmd.none, True )
+
+                ConstructionSquare _ _ ->
+                    ( model, Cmd.none, False )
+
+                Line conductor p1 p2 _ ->
+                    ( model, Cmd.none, True )
+
+                DashedLine conductor p1 p2 _ ->
+                    ( model, Cmd.none, True )
+
+                ConstructionLine _ _ _ ->
+                    ( model, Cmd.none, False )
+
+
+
+--ConductorPiece _ ->
+--    ( { model | selectPieces = [ element ] }, Cmd.none, False )
+--
+--TraceSegmentPiece surfaceConductor p1 p2 ->
+--    let
+--        cs =
+--            ConductorPiece (Surface surfaceConductor)
+--    in
+--    if List.member cs model.selectPieces then
+--        ( { model
+--            | selectPieces =
+--                List.filter (\x -> x == cs) model.selectPieces
+--                    |> List.append [ element ]
+--          }
+--        , Cmd.none
+--        , True
+--        )
+--
+--    else
+--        ( { model | selectPieces = [ element ] }, Cmd.none, False )
 
 
 createTraceToHighlightNets : List (ConstructionPoint Thickness) -> Model -> Model
@@ -747,10 +995,10 @@ viewTool model =
             viewTraceWithConstruction model (constructionPointsToTracePoints cps)
 
         CreateThroughPadTool ->
-            viewThroughConductor model.highlightNets <| ThroughPad model.cursor model.radius (NoNet model.nextNetId)
+            viewVisualElement model (ConstructionCircle model.cursor model.radius)
 
         CreateSurfacePadTool ->
-            viewSurfaceConductor model.highlightNets False <| SurfacePad model.cursor (model.radius * 2) (NoNet model.nextNetId)
+            viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2))
 
         _ ->
             Svg.text ""
@@ -775,83 +1023,23 @@ toolToString tool =
             "zone"
 
 
-viewThroughConductor : List Net -> ThroughConductor -> Svg Msg
-viewThroughConductor highlightNets throughConductor =
-    case throughConductor of
-        ThroughPad point radius net ->
-            Svg.circle
-                [ SvgA.cx <| String.fromFloat point.x
-                , SvgA.cy <| String.fromFloat point.y
-                , SvgA.r <| String.fromFloat radius
-                , SvgA.fill (netColor highlightNets net)
-                , SvgE.onClick (ClickConductor (ConductorSelection (Through throughConductor)))
-                , SvgA.class "clickable"
-                ]
-                []
-
-
-viewSurfaceConductors : List Net -> List Layer -> List (Svg Msg)
-viewSurfaceConductors highlightNets layers =
+viewSurfaceConductors : AppearanceDerivation a -> List Layer -> List (Svg Msg)
+viewSurfaceConductors model layers =
     case layers of
         layer :: hiddenLayers ->
             let
                 highlightedHiddenSurfaceConductors =
                     List.concatMap .conductors hiddenLayers
-                        |> List.filter (\c -> List.member (surfaceConductorNet c) highlightNets)
+                        |> List.filter (\c -> List.member (surfaceConductorNet c) model.highlightNets)
+
+                f hidden =
+                    List.map (viewVisualElement model) << surfaceConductorToVisualElement hidden
             in
-            List.map (viewSurfaceConductor highlightNets False) layer.conductors
-                ++ List.map (viewSurfaceConductor highlightNets True) highlightedHiddenSurfaceConductors
+            List.concatMap (f False) layer.conductors
+                ++ List.concatMap (f True) highlightedHiddenSurfaceConductors
 
         [] ->
             []
-
-
-viewSurfaceConductor : List Net -> Bool -> SurfaceConductor -> Svg Msg
-viewSurfaceConductor highlightNets hidden surfaceConductor =
-    case surfaceConductor of
-        Trace tracePoints net ->
-            let
-                attrs =
-                    if hidden then
-                        [ SvgA.strokeDasharray "5,15" ]
-
-                    else
-                        []
-            in
-            viewTrace (\p1 p2 -> ClickConductor (TraceSegmentSelection surfaceConductor p1 p2)) (netColor highlightNets net) attrs tracePoints
-
-        SurfacePad point width net ->
-            let
-                half =
-                    width / 2
-
-                attrs =
-                    if hidden then
-                        [ SvgA.stroke <| netColor highlightNets net
-                        , SvgA.strokeWidth "2px"
-                        , SvgA.fill "none"
-                        ]
-
-                    else
-                        [ SvgA.fill <| netColor highlightNets net ]
-            in
-            Svg.rect
-                ([ SvgA.x <| String.fromFloat (point.x - half)
-                 , SvgA.y <| String.fromFloat (point.y - half)
-                 , SvgA.width <| String.fromFloat width
-                 , SvgA.height <| String.fromFloat width
-                 ]
-                    ++ attrs
-                )
-                []
-
-        Zone points net ->
-            Svg.text "ZONE"
-
-
-viewTrace : (Point -> Point -> Msg) -> String -> List (Attribute Msg) -> List TracePoint -> Svg Msg
-viewTrace toClickMsg color attrs points =
-    Svg.g [] (viewTraceSegmented (Just toClickMsg) color attrs points)
 
 
 viewTraceWithConstruction : Model -> List TracePoint -> Svg Msg
@@ -865,7 +1053,7 @@ viewTraceWithConstruction model points =
                 []
     in
     Svg.g [] <|
-        viewTraceSegmented Nothing (netColor [] (NoNet 0)) [] points
+        viewTraceSegmented Nothing "lime" [] points
             ++ constructionTrace
 
 
@@ -956,7 +1144,7 @@ viewConstructionTrace model tracePoints =
     in
     case List.reverse tracePoints of
         last :: _ ->
-            [ viewTraceSegment Nothing (netColor [] (NoNet 0)) [] last (pointToTracePoint point model.thickness)
+            [ viewTraceSegment Nothing "lime" [] last (pointToTracePoint point model.thickness)
             , viewCrosshair cp
             ]
 
