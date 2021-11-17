@@ -535,7 +535,8 @@ view model =
                     [ id "root"
                     ]
                     [ div [ class "flex-row" ]
-                        [ div
+                        [ sidebar model
+                        , div
                             [ id "canvas-container"
                             , onMouseEnter MouseOver
                             , onMouseLeave MouseOut
@@ -553,54 +554,58 @@ view model =
                                     ++ viewWorkspace model
                                 )
                             ]
-                        , div [ id "right-menu" ]
-                            [ viewLayerList model.timeline.current.layers model.layers
-                            , viewLayerSelect
-                            , div [ id "key-row-0" ]
-                                [ button [] [ text "", span [] [ text "1" ] ]
-                                , button [] [ text "", span [] [ text "2" ] ]
-                                , button [] [ text "", span [] [ text "3" ] ]
-                                , button [] [ text "", span [] [ text "4" ] ]
-                                ]
-                            , div [ id "key-row-1" ]
-                                [ button
-                                    [ activeClass <| activeTool model (Workspace.SelectTool Nothing)
-                                    , onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectTool Nothing
-                                    ]
-                                    [ text "Select", span [] [ text "q" ] ]
-                                , button [] [ text "", span [] [ text "w" ] ]
-                                ]
-                            , div [ id "key-row-2" ]
-                                [ button
-                                    [ activeClass <| activeTool model Workspace.CreateThroughPadTool
-                                    , onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateThroughPadTool
-                                    ]
-                                    [ text "THT", span [] [ text "a" ] ]
-                                , button
-                                    [ activeClass <| activeTool model Workspace.CreateSurfacePadTool
-                                    , onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateSurfacePadTool
-                                    ]
-                                    [ text "SMT", span [] [ text "s" ] ]
-                                , button
-                                    [ activeClass <| activeTool model (Workspace.CreateTraceTool [])
-                                    , onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateTraceTool []
-                                    ]
-                                    [ text "Trace", span [] [ text "d" ] ]
-                                ]
-                            , div [ id "key-row-3" ]
-                                [ button [ activeClass model.zPressed, onClick Undo ] [ text "Undo", span [] [ text "z" ] ]
-                                , button [ activeClass model.xPressed, onClick Redo ] [ text "Redo", span [] [ text "x" ] ]
-                                , button [] [ text "", span [] [ text "c" ] ]
-                                , button [ activeClass model.vPressed, onClick <| Workspace Workspace.CycleLayers ] [ text "Cycle", span [] [ text "v" ] ]
-                                ]
-                            , viewInfo model
-                            ]
                         ]
                     ]
             )
             model
         ]
     }
+
+
+sidebar : Model -> Html Msg
+sidebar model =
+    div [ id "sidebar" ]
+        [ viewLayerList model.timeline.current.layers model.layers
+        , viewLayerSelect
+        , div [ id "key-row-0" ]
+            [ button [] [ text "", span [] [ text "1" ] ]
+            , button [] [ text "", span [] [ text "2" ] ]
+            , button [] [ text "", span [] [ text "3" ] ]
+            , button [] [ text "", span [] [ text "4" ] ]
+            ]
+        , div [ id "key-row-1" ]
+            [ button
+                [ activeClass <| activeTool model (Workspace.SelectTool Nothing)
+                , onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectTool Nothing
+                ]
+                [ text "Select", span [] [ text "q" ] ]
+            , button [] [ text "", span [] [ text "w" ] ]
+            ]
+        , div [ id "key-row-2" ]
+            [ button
+                [ activeClass <| activeTool model Workspace.CreateThroughPadTool
+                , onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateThroughPadTool
+                ]
+                [ text "THT", span [] [ text "a" ] ]
+            , button
+                [ activeClass <| activeTool model Workspace.CreateSurfacePadTool
+                , onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateSurfacePadTool
+                ]
+                [ text "SMT", span [] [ text "s" ] ]
+            , button
+                [ activeClass <| activeTool model (Workspace.CreateTraceTool [])
+                , onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateTraceTool []
+                ]
+                [ text "Trace", span [] [ text "d" ] ]
+            ]
+        , div [ id "key-row-3" ]
+            [ button [ activeClass model.zPressed, onClick Undo ] [ text "Undo", span [] [ text "z" ] ]
+            , button [ activeClass model.xPressed, onClick Redo ] [ text "Redo", span [] [ text "x" ] ]
+            , button [] [ text "", span [] [ text "c" ] ]
+            , button [ activeClass model.vPressed, onClick <| Workspace Workspace.CycleLayers ] [ text "Cycle", span [] [ text "v" ] ]
+            ]
+        , viewInfo model
+        ]
 
 
 activeClass : Bool -> Attribute Msg
