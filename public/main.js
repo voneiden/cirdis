@@ -60,10 +60,6 @@ document.addEventListener("wheel", (e) => {
   } else {
     deltaWheel += e.deltaY
   }
-  console.log(e.shiftKey, e.deltaY, e.deltaX)
-  if (now - lastWheel < 33 || !sendWheel) {
-    return;
-  }
   cirdis.ports.wheel.send(deltaWheel)
 
   deltaWheel = 0;

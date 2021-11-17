@@ -97,21 +97,14 @@ differences with browser wheel event delta's.
 zoomTransform : Transform -> Float -> Transform
 zoomTransform t z =
     let
+        -- 66.25 seems to be the default step for chrome on linux, so use that as a baseline
         multiplier =
-            1.25
+            20 * (z / 66.25) / 100 + 1
 
         newZ =
-            if z > 0 then
-                t.z * multiplier
-
-            else
-                t.z / multiplier
+            t.z * multiplier
     in
-    if newZ > 0.9 && newZ < 1.1 then
-        { t | z = 1 }
-
-    else
-        { t | z = newZ }
+    { t | z = newZ }
 
 
 type alias Canvas =
