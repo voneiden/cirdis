@@ -281,6 +281,7 @@ viewVisualElement model element =
                 thickness
                 [ SvgA.stroke <| deriveColor model element
                 , SvgE.onClick (ClickVisualElement element)
+                , SvgA.strokeLinecap "round"
                 , SvgA.class "clickable"
                 ]
 
@@ -291,7 +292,7 @@ viewVisualElement model element =
                 [ SvgA.stroke <| deriveColor model element
                 , SvgE.onClick (ClickVisualElement element)
                 , SvgA.class "clickable"
-                , SvgA.strokeDasharray "5,15"
+                , SvgA.strokeDasharray <| String.join "," [ String.fromFloat (2 * thickness), String.fromFloat (1 * thickness) ]
                 ]
 
         ConstructionLine p1 p2 thickness ->
@@ -343,7 +344,6 @@ viewLine p1 p2 thickness attrs =
         ([ d
          , SvgA.fill "none"
          , SvgA.strokeWidth (String.fromFloat thickness)
-         , SvgA.strokeLinecap "round"
          ]
             ++ attrs
         )
@@ -401,7 +401,7 @@ traceToVisualElements hidden c tracePoints =
     in
     case tracePoints of
         p1 :: p2 :: rest ->
-            element c p1.point p2.point p1.thickness :: traceToVisualElements hidden c (p2 :: rest)
+            element c p1.point p2.point p2.thickness :: traceToVisualElements hidden c (p2 :: rest)
 
         _ ->
             []
@@ -755,6 +755,9 @@ update msg model =
                     CreateSurfacePadTool ->
                         ( updateRadius delta model, Cmd.none, False )
 
+                    CreateTraceTool _ ->
+                        ( updateThickness delta model, Cmd.none, False )
+
                     _ ->
                         ( model, Cmd.none, False )
 
@@ -778,7 +781,7 @@ update msg model =
                     )
 
                 _ ->
-                    ( { model | tool = tool }, Cmd.none, False )
+                    ( { model | tool = tool, highlightNets = [] }, Cmd.none, False )
 
         ResetTool ->
             ( resetTool model, Cmd.none, False )
@@ -872,6 +875,26 @@ updateRadius delta model =
 
     else
         { model | radius = newZ }
+
+
+updateThickness : Float -> Model -> Model
+updateThickness delta model =
+    let
+        multiplier =
+            1.25
+
+        newZ =
+            if delta < 0 then
+                model.thickness * multiplier
+
+            else
+                model.thickness / multiplier
+    in
+    if newZ > 0.9 && newZ < 1.1 then
+        { model | thickness = 1 }
+
+    else
+        { model | thickness = newZ }
 
 
 resetTool : Model -> Model
@@ -1123,7 +1146,7 @@ viewTraceSegment maybeToClickMsg color attrs start end =
         ([ d
          , SvgA.fill "none"
          , SvgA.stroke color
-         , SvgA.strokeWidth (String.fromFloat start.thickness)
+         , SvgA.strokeWidth (String.fromFloat end.thickness)
          , SvgA.strokeLinecap "round"
          ]
             ++ Maybe.withDefault [] (Maybe.map (\f -> [ SvgE.onClick (f start.point end.point), SvgA.class "clickable" ]) maybeToClickMsg)
