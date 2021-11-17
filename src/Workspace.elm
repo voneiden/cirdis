@@ -34,7 +34,7 @@ defaultModel =
     { layers = []
     , cursor = Point 0 0
     , focused = False
-    , transform = { x = 0, y = 0, z = 1 }
+    , transform = defaultTransform
     , canvas = { width = 0, height = 0 }
     , radius = 10
     , thickness = 5
@@ -253,13 +253,13 @@ viewVisualElement model element =
                 , SvgA.fill "none"
                 ]
 
-        Square c point width ->
+        Square _ point width ->
             viewSquare point
                 width
                 [ SvgA.fill <| deriveColor model element
                 ]
 
-        SquareOutline c point width ->
+        SquareOutline _ point width ->
             viewSquare point
                 width
                 [ SvgA.stroke <| deriveColor model element
@@ -275,7 +275,7 @@ viewVisualElement model element =
                 , SvgA.fill "none"
                 ]
 
-        Line c p1 p2 thickness ->
+        Line _ p1 p2 thickness ->
             viewLine p1
                 p2
                 thickness
@@ -284,7 +284,7 @@ viewVisualElement model element =
                 , SvgA.class "clickable"
                 ]
 
-        DashedLine c p1 p2 thickness ->
+        DashedLine _ p1 p2 thickness ->
             viewLine p1
                 p2
                 thickness
@@ -363,7 +363,7 @@ conductorToVisualElement conductor =
 throughConductorToVisualElement : ThroughConductor -> List VisualElement
 throughConductorToVisualElement throughConductor =
     case throughConductor of
-        ThroughPad point radius net ->
+        ThroughPad point radius _ ->
             [ Circle (Through throughConductor) point radius ]
 
 
@@ -374,18 +374,36 @@ surfaceConductorToVisualElement hidden surfaceConductor =
             Surface surfaceConductor
     in
     case ( hidden, surfaceConductor ) of
-        ( _, Trace tracePoints net ) ->
-            [ Circle c { x = 0, y = 0 } 5 ]
+        ( _, Trace tracePoints _ ) ->
+            traceToVisualElements hidden c tracePoints
 
         -- todo
-        ( False, SurfacePad point width net ) ->
+        ( False, SurfacePad point width _ ) ->
             [ Square c point width ]
 
-        ( True, SurfacePad point width net ) ->
+        ( True, SurfacePad point width _ ) ->
             [ SquareOutline c point width ]
 
         ( _, Zone points net ) ->
             -- TODO
+            []
+
+
+traceToVisualElements : Bool -> Conductor -> List TracePoint -> List VisualElement
+traceToVisualElements hidden c tracePoints =
+    let
+        element =
+            if hidden then
+                DashedLine
+
+            else
+                Line
+    in
+    case tracePoints of
+        p1 :: p2 :: rest ->
+            element c p1.point p2.point p1.thickness :: traceToVisualElements hidden c (p2 :: rest)
+
+        _ ->
             []
 
 
