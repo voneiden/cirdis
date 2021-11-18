@@ -474,6 +474,22 @@ update msg model =
                     update Redo model
                         |> chainUpdate (\m -> ( { m | xPressed = True }, Cmd.none ))
 
+                49 ->
+                    -- 1
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetSubTool 1) model.timeline.current) model
+
+                50 ->
+                    -- 2
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetSubTool 2) model.timeline.current) model
+
+                51 ->
+                    -- 3
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetSubTool 3) model.timeline.current) model
+
+                52 ->
+                    -- 4
+                    fromWorkspaceUpdate (Workspace.update (Workspace.SetSubTool 4) model.timeline.current) model
+
                 _ ->
                     ( model, Cmd.none )
 
@@ -562,47 +578,170 @@ view model =
     }
 
 
+sidebarKeyRow0 : Workspace.Tool -> Html Msg
+sidebarKeyRow0 tool =
+    case tool of
+        Workspace.CreateSurfacePadTool ->
+            surfacePadSubTools tool
+
+        Workspace.CreateNumberedSurfacePad _ ->
+            surfacePadSubTools tool
+
+        Workspace.CreateSoicSurfacePad _ _ ->
+            surfacePadSubTools tool
+
+        Workspace.CreateRowSurfacePad _ _ ->
+            surfacePadSubTools tool
+
+        Workspace.CreateThroughPadTool ->
+            throughPadSubTools tool
+
+        Workspace.CreateNumberedThroughPad _ ->
+            throughPadSubTools tool
+
+        Workspace.CreateDipThroughPad _ _ ->
+            throughPadSubTools tool
+
+        Workspace.CreateRowThroughPad _ _ ->
+            throughPadSubTools tool
+
+        _ ->
+            blankSubTools
+
+
+toolAttrsAndText : ( Workspace.Tool, Bool ) -> ( List (Attribute Msg), Html Msg )
+toolAttrsAndText ( tool, active ) =
+    let
+        activeAttr =
+            if active then
+                class "active"
+
+            else
+                class ""
+    in
+    case tool of
+        Workspace.SelectTool maybeConductor ->
+            ( [ activeAttr ], text "" )
+
+        Workspace.CreateTraceTool constructionPoints ->
+            ( [ activeAttr ], text "" )
+
+        Workspace.CreateSurfacePadTool ->
+            ( [ activeAttr ], span [ class "bordered" ] [ text "" ] )
+
+        Workspace.CreateNumberedSurfacePad int ->
+            ( [ activeAttr ], span [ class "bordered" ] [ text <| String.fromInt int ] )
+
+        Workspace.CreateSoicSurfacePad mp1 mp2 ->
+            ( [ activeAttr ], text "SOIC" )
+
+        Workspace.CreateRowSurfacePad mp1 mp2 ->
+            ( [ activeAttr ], text "Row" )
+
+        Workspace.CreateThroughPadTool ->
+            ( [ activeAttr ], text "" )
+
+        Workspace.CreateNumberedThroughPad int ->
+            ( [ activeAttr ], text "" )
+
+        Workspace.CreateDipThroughPad mp1 mp2 ->
+            ( [ activeAttr ], text "" )
+
+        Workspace.CreateRowThroughPad mp1 mp2 ->
+            ( [ activeAttr ], text "" )
+
+        Workspace.CreateZoneTool ->
+            ( [ activeAttr ], text "" )
+
+
+pickTool : Workspace.Tool -> Workspace.Tool -> ( Workspace.Tool, Bool )
+pickTool rowTool selectedTool =
+    if Workspace.resetTool rowTool == Workspace.resetTool selectedTool then
+        ( selectedTool, True )
+
+    else
+        ( rowTool, False )
+
+
+surfacePadSubTools : Workspace.Tool -> Html Msg
+surfacePadSubTools tool =
+    let
+        ( b1Attrs, b1Text ) =
+            toolAttrsAndText (pickTool Workspace.CreateSurfacePadTool tool)
+
+        ( b2Attrs, b2Text ) =
+            toolAttrsAndText (pickTool (Workspace.CreateNumberedSurfacePad 1) tool)
+
+        ( b3Attrs, b3Text ) =
+            toolAttrsAndText (pickTool (Workspace.CreateSoicSurfacePad Nothing Nothing) tool)
+
+        ( b4Attrs, b4Text ) =
+            toolAttrsAndText (pickTool (Workspace.CreateRowSurfacePad Nothing Nothing) tool)
+    in
+    div [ id "key-row-0" ]
+        [ button b1Attrs [ b1Text, span [ class "keycode" ] [ text "1" ] ]
+        , button b2Attrs [ b2Text, span [ class "keycode" ] [ text "2" ] ]
+        , button b3Attrs [ b3Text, span [ class "keycode" ] [ text "3" ] ]
+        , button b4Attrs [ b4Text, span [ class "keycode" ] [ text "4" ] ]
+        ]
+
+
+throughPadSubTools : Workspace.Tool -> Html Msg
+throughPadSubTools tool =
+    div [ id "key-row-0" ]
+        [ button [] [ text "", span [ class "keycode" ] [ text "1" ] ]
+        , button [] [ text "", span [ class "keycode" ] [ text "2" ] ]
+        , button [] [ text "", span [ class "keycode" ] [ text "3" ] ]
+        , button [] [ text "", span [ class "keycode" ] [ text "4" ] ]
+        ]
+
+
+blankSubTools : Html Msg
+blankSubTools =
+    div [ id "key-row-0" ]
+        [ button [] [ text "", span [ class "keycode" ] [ text "1" ] ]
+        , button [] [ text "", span [ class "keycode" ] [ text "2" ] ]
+        , button [] [ text "", span [ class "keycode" ] [ text "3" ] ]
+        , button [] [ text "", span [ class "keycode" ] [ text "4" ] ]
+        ]
+
+
 sidebar : Model -> Html Msg
 sidebar model =
     div [ id "sidebar" ]
         [ viewLayerList model.timeline.current.layers model.layers
         , viewLayerSelect
-        , div [ id "key-row-0" ]
-            [ button [] [ text "", span [] [ text "1" ] ]
-            , button [] [ text "", span [] [ text "2" ] ]
-            , button [] [ text "", span [] [ text "3" ] ]
-            , button [] [ text "", span [] [ text "4" ] ]
-            ]
+        , sidebarKeyRow0 model.timeline.current.tool
         , div [ id "key-row-1" ]
             [ button
                 [ activeClass <| activeTool model (Workspace.SelectTool Nothing)
                 , onClick <| Workspace <| Workspace.SetTool <| Workspace.SelectTool Nothing
                 ]
-                [ text "Select", span [] [ text "q" ] ]
-            , button [] [ text "", span [] [ text "w" ] ]
+                [ text "Select", span [ class "keycode" ] [ text "q" ] ]
+            , button [] [ text "", span [ class "keycode" ] [ text "w" ] ]
             ]
         , div [ id "key-row-2" ]
             [ button
                 [ activeClass <| activeTool model Workspace.CreateThroughPadTool
                 , onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateThroughPadTool
                 ]
-                [ text "THT", span [] [ text "a" ] ]
+                [ text "THT", span [ class "keycode" ] [ text "a" ] ]
             , button
                 [ activeClass <| activeTool model Workspace.CreateSurfacePadTool
                 , onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateSurfacePadTool
                 ]
-                [ text "SMT", span [] [ text "s" ] ]
+                [ text "SMT", span [ class "keycode" ] [ text "s" ] ]
             , button
                 [ activeClass <| activeTool model (Workspace.CreateTraceTool [])
                 , onClick <| Workspace <| Workspace.SetTool <| Workspace.CreateTraceTool []
                 ]
-                [ text "Trace", span [] [ text "d" ] ]
+                [ text "Trace", span [ class "keycode" ] [ text "d" ] ]
             ]
         , div [ id "key-row-3" ]
-            [ button [ activeClass model.zPressed, onClick Undo ] [ text "Undo", span [] [ text "z" ] ]
-            , button [ activeClass model.xPressed, onClick Redo ] [ text "Redo", span [] [ text "x" ] ]
+            [ button [ activeClass model.zPressed, onClick Undo ] [ text "Undo", span [ class "keycode" ] [ text "z" ] ]
+            , button [ activeClass model.xPressed, onClick Redo ] [ text "Redo", span [ class "keycode" ] [ text "x" ] ]
             , button [] [ text "", span [] [ text "c" ] ]
-            , button [ activeClass model.vPressed, onClick <| Workspace Workspace.CycleLayers ] [ text "Cycle", span [] [ text "v" ] ]
+            , button [ activeClass model.vPressed, onClick <| Workspace Workspace.CycleLayers ] [ text "Cycle", span [ class "keycode" ] [ text "v" ] ]
             ]
         , viewInfo model
         ]
@@ -624,6 +763,15 @@ activeTool model tool =
             True
 
         ( Workspace.CreateSurfacePadTool, Workspace.CreateSurfacePadTool ) ->
+            True
+
+        ( Workspace.CreateNumberedSurfacePad _, Workspace.CreateSurfacePadTool ) ->
+            True
+
+        ( Workspace.CreateSoicSurfacePad _ _, Workspace.CreateSurfacePadTool ) ->
+            True
+
+        ( Workspace.CreateRowSurfacePad _ _, Workspace.CreateSurfacePadTool ) ->
             True
 
         ( Workspace.CreateThroughPadTool, Workspace.CreateThroughPadTool ) ->
@@ -748,6 +896,56 @@ viewInfo model =
 
                     Workspace.CreateZoneTool ->
                         text "Zone tool"
+
+                    Workspace.CreateNumberedSurfacePad pinNumber ->
+                        text <| "Place pin number " ++ String.fromInt pinNumber
+
+                    Workspace.CreateSoicSurfacePad mp1 mp2 ->
+                        case ( mp1, mp2 ) of
+                            ( Nothing, Nothing ) ->
+                                text "Place pin 1"
+
+                            ( Just _, Nothing ) ->
+                                text "Place pin 2"
+
+                            _ ->
+                                text "Place pin 3"
+
+                    Workspace.CreateRowSurfacePad mp1 mp2 ->
+                        case ( mp1, mp2 ) of
+                            ( Nothing, Nothing ) ->
+                                text "Place pin 1"
+
+                            ( Just _, Nothing ) ->
+                                text "Place pin 2"
+
+                            _ ->
+                                text "Place pin 3"
+
+                    Workspace.CreateNumberedThroughPad pinNumber ->
+                        text <| "Place pin " ++ String.fromInt pinNumber
+
+                    Workspace.CreateDipThroughPad mp1 mp2 ->
+                        case ( mp1, mp2 ) of
+                            ( Nothing, Nothing ) ->
+                                text "Place pin 1"
+
+                            ( Just _, Nothing ) ->
+                                text "Place pin 2"
+
+                            _ ->
+                                text "Place pin 3"
+
+                    Workspace.CreateRowThroughPad mp1 mp2 ->
+                        case ( mp1, mp2 ) of
+                            ( Nothing, Nothing ) ->
+                                text "Place pin 1"
+
+                            ( Just _, Nothing ) ->
+                                text "Place pin 2"
+
+                            _ ->
+                                text "Place pin 3"
     in
     div [] [ content ]
 

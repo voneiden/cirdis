@@ -80,6 +80,9 @@ html, body {
     width: 50px;
     position: relative;
     margin-right: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 
     &:active,
     &.active {
@@ -90,7 +93,7 @@ html, body {
       outline: none;
     }
 
-    span {
+    span.keycode {
       position: absolute;
       display: flex;
       top: 0;
@@ -106,7 +109,19 @@ html, body {
     }
   }
 }
+#key-row-0 {
+  .circled,
+  .bordered {
+    border: 1px solid $light-fg;
+    height: 15px;
+    width: 15px;
+    display: block;
 
+  }
+  .circled {
+    border-radius: 7.5px;
+  }
+}
 #key-row-1 {
   margin-top: 10px;
   margin-left: 10px;

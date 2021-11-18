@@ -201,7 +201,7 @@ type VisualElement
     | ConstructionCircle Point Radius
     | Square Conductor Point Width
     | SquareOutline Conductor Point Width
-    | ConstructionSquare Point Width
+    | ConstructionSquare Point Width (Maybe String)
     | Line Conductor Point Point Thickness
     | DashedLine Conductor Point Point Thickness
     | ConstructionLine Point Point Thickness
@@ -222,7 +222,7 @@ elementConductor element =
         SquareOutline conductor _ _ ->
             Just conductor
 
-        ConstructionSquare _ _ ->
+        ConstructionSquare _ _ _ ->
             Nothing
 
         Line conductor _ _ _ ->
@@ -258,6 +258,7 @@ viewVisualElement model element =
                 width
                 [ SvgA.fill <| deriveColor model element
                 ]
+                Nothing
 
         SquareOutline _ point width ->
             viewSquare point
@@ -266,14 +267,20 @@ viewVisualElement model element =
                 , SvgA.strokeWidth "2px"
                 , SvgA.fill "none"
                 ]
+                Nothing
 
-        ConstructionSquare point width ->
+        ConstructionSquare point width maybeText ->
+            let
+                color =
+                    deriveColor model element
+            in
             viewSquare point
                 width
-                [ SvgA.stroke <| deriveColor model element
+                [ SvgA.stroke <| color
                 , SvgA.strokeWidth "2px"
                 , SvgA.fill "none"
                 ]
+                (Maybe.map (\t -> ( t, color )) maybeText)
 
         Line _ p1 p2 thickness ->
             viewLine p1
@@ -315,20 +322,42 @@ viewCircle point radius attrs =
         []
 
 
-viewSquare point width attrs =
+viewSquare : Point -> Width -> List (Svg.Attribute Msg) -> Maybe ( String, String ) -> Svg Msg
+viewSquare point width attrs maybeText =
     let
         half =
             width / 2
+
+        textElement =
+            case maybeText of
+                Just ( text, color ) ->
+                    [ Svg.text_
+                        [ SvgA.x <| String.fromFloat point.x
+                        , SvgA.y <| String.fromFloat point.y
+                        , SvgA.dominantBaseline "middle"
+                        , SvgA.textAnchor "middle"
+                        , SvgA.pointerEvents "none"
+                        , SvgA.fontSize <| String.fromFloat width ++ "px"
+                        , SvgA.fill color
+                        ]
+                        [ Svg.text text ]
+                    ]
+
+                Nothing ->
+                    []
     in
-    Svg.rect
-        ([ SvgA.x <| String.fromFloat (point.x - half)
-         , SvgA.y <| String.fromFloat (point.y - half)
-         , SvgA.width <| String.fromFloat width
-         , SvgA.height <| String.fromFloat width
-         ]
-            ++ attrs
-        )
-        []
+    Svg.g [] <|
+        [ Svg.rect
+            ([ SvgA.x <| String.fromFloat (point.x - half)
+             , SvgA.y <| String.fromFloat (point.y - half)
+             , SvgA.width <| String.fromFloat width
+             , SvgA.height <| String.fromFloat width
+             ]
+                ++ attrs
+            )
+            []
+        ]
+            ++ textElement
 
 
 viewLine p1 p2 thickness attrs =
@@ -514,7 +543,13 @@ type Tool
     = SelectTool (Maybe Conductor)
     | CreateTraceTool (List (ConstructionPoint Thickness))
     | CreateSurfacePadTool
+    | CreateNumberedSurfacePad Int
+    | CreateSoicSurfacePad (Maybe Point) (Maybe Point)
+    | CreateRowSurfacePad (Maybe Point) (Maybe Point)
     | CreateThroughPadTool
+    | CreateNumberedThroughPad Int
+    | CreateDipThroughPad (Maybe Point) (Maybe Point)
+    | CreateRowThroughPad (Maybe Point) (Maybe Point)
     | CreateZoneTool
 
 
@@ -637,6 +672,7 @@ type Msg
     | LeftClick Point
     | ZoomDelta Float ShiftPressed
     | SetTool Tool
+    | SetSubTool Int
     | ResetTool
     | SetTransform Transform
     | AddLayer Int
@@ -702,7 +738,7 @@ update msg model =
                                         MergeOk net conductors ->
                                             ( List.foldl (updateConductorNet net) model conductors
                                                 |> addSurfaceConductor (constructionPointsToTrace newPoints net)
-                                                |> resetTool
+                                                |> resetModelTool
                                                 |> createTraceToHighlightNets newPoints
                                             , Cmd.none
                                             , True
@@ -710,7 +746,7 @@ update msg model =
 
                                         MergeConflict nets conductors ->
                                             -- TODO show somekind of conflict resolution thing
-                                            ( resetTool model, Cmd.none, True )
+                                            ( resetModelTool model, Cmd.none, True )
 
                                         MergeNoNet conductors ->
                                             let
@@ -719,7 +755,7 @@ update msg model =
                                             in
                                             ( List.foldl (updateConductorNet net) model conductors
                                                 |> addSurfaceConductor (constructionPointsToTrace newPoints net)
-                                                |> resetTool
+                                                |> resetModelTool
                                                 |> incrementNextNetId
                                                 |> createTraceToHighlightNets newPoints
                                             , Cmd.none
@@ -755,6 +791,15 @@ update msg model =
                     CreateSurfacePadTool ->
                         ( updateRadius delta model, Cmd.none, False )
 
+                    CreateNumberedSurfacePad _ ->
+                        ( updateRadius delta model, Cmd.none, False )
+
+                    CreateSoicSurfacePad _ _ ->
+                        ( updateRadius delta model, Cmd.none, False )
+
+                    CreateRowSurfacePad _ _ ->
+                        ( updateRadius delta model, Cmd.none, False )
+
                     CreateTraceTool _ ->
                         ( updateThickness delta model, Cmd.none, False )
 
@@ -784,7 +829,7 @@ update msg model =
                     ( { model | tool = tool, highlightNets = [] }, Cmd.none, False )
 
         ResetTool ->
-            ( resetTool model, Cmd.none, False )
+            ( resetModelTool model, Cmd.none, False )
 
         SetTransform transform ->
             ( { model | transform = transform }, Cmd.none, False )
@@ -816,7 +861,7 @@ update msg model =
                 SquareOutline conductor point width ->
                     ( model, Cmd.none, True )
 
-                ConstructionSquare _ _ ->
+                ConstructionSquare _ _ _ ->
                     ( model, Cmd.none, False )
 
                 Line conductor p1 p2 _ ->
@@ -827,6 +872,57 @@ update msg model =
 
                 ConstructionLine _ _ _ ->
                     ( model, Cmd.none, False )
+
+        SetSubTool index ->
+            case model.tool of
+                SelectTool _ ->
+                    ( model, Cmd.none, False )
+
+                CreateTraceTool _ ->
+                    ( model, Cmd.none, False )
+
+                CreateSurfacePadTool ->
+                    ( { model | tool = indexToSurfacePadTool index }, Cmd.none, False )
+
+                CreateNumberedSurfacePad _ ->
+                    ( { model | tool = indexToSurfacePadTool index }, Cmd.none, False )
+
+                CreateSoicSurfacePad _ _ ->
+                    ( { model | tool = indexToSurfacePadTool index }, Cmd.none, False )
+
+                CreateRowSurfacePad _ _ ->
+                    ( { model | tool = indexToSurfacePadTool index }, Cmd.none, False )
+
+                CreateThroughPadTool ->
+                    ( model, Cmd.none, False )
+
+                CreateNumberedThroughPad _ ->
+                    ( model, Cmd.none, False )
+
+                CreateDipThroughPad _ _ ->
+                    ( model, Cmd.none, False )
+
+                CreateRowThroughPad _ _ ->
+                    ( model, Cmd.none, False )
+
+                CreateZoneTool ->
+                    ( model, Cmd.none, False )
+
+
+indexToSurfacePadTool : Int -> Tool
+indexToSurfacePadTool index =
+    case index of
+        2 ->
+            resetTool (CreateNumberedSurfacePad 1)
+
+        3 ->
+            resetTool (CreateSoicSurfacePad Nothing Nothing)
+
+        4 ->
+            resetTool (CreateRowSurfacePad Nothing Nothing)
+
+        _ ->
+            resetTool CreateSurfacePadTool
 
 
 
@@ -897,27 +993,46 @@ updateThickness delta model =
         { model | thickness = newZ }
 
 
-resetTool : Model -> Model
-resetTool model =
-    let
-        tool =
-            case model.tool of
-                SelectTool _ ->
-                    SelectTool Nothing
+resetTool : Tool -> Tool
+resetTool tool =
+    case tool of
+        SelectTool _ ->
+            SelectTool Nothing
 
-                CreateTraceTool _ ->
-                    CreateTraceTool []
+        CreateTraceTool _ ->
+            CreateTraceTool []
 
-                CreateSurfacePadTool ->
-                    CreateSurfacePadTool
+        CreateSurfacePadTool ->
+            CreateSurfacePadTool
 
-                CreateThroughPadTool ->
-                    CreateThroughPadTool
+        CreateThroughPadTool ->
+            CreateThroughPadTool
 
-                CreateZoneTool ->
-                    CreateZoneTool
-    in
-    { model | tool = tool }
+        CreateZoneTool ->
+            CreateZoneTool
+
+        CreateNumberedSurfacePad _ ->
+            CreateNumberedSurfacePad 1
+
+        CreateSoicSurfacePad _ _ ->
+            CreateSoicSurfacePad Nothing Nothing
+
+        CreateRowSurfacePad _ _ ->
+            CreateRowSurfacePad Nothing Nothing
+
+        CreateNumberedThroughPad _ ->
+            CreateNumberedThroughPad 1
+
+        CreateDipThroughPad _ _ ->
+            CreateDipThroughPad Nothing Nothing
+
+        CreateRowThroughPad _ _ ->
+            CreateRowThroughPad Nothing Nothing
+
+
+resetModelTool : Model -> Model
+resetModelTool model =
+    { model | tool = resetTool model.tool }
 
 
 incrementNextNetId : Model -> Model
@@ -1039,7 +1154,16 @@ viewTool model =
             viewVisualElement model (ConstructionCircle model.cursor model.radius)
 
         CreateSurfacePadTool ->
-            viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2))
+            viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) Nothing)
+
+        CreateNumberedSurfacePad pinNumber ->
+            viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just <| String.fromInt pinNumber))
+
+        CreateSoicSurfacePad mp1 mp2 ->
+            viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) Nothing)
+
+        CreateRowSurfacePad mp1 mp2 ->
+            viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) Nothing)
 
         _ ->
             Svg.text ""
@@ -1062,6 +1186,24 @@ toolToString tool =
 
         CreateZoneTool ->
             "zone"
+
+        CreateNumberedSurfacePad _ ->
+            "numbered-surface"
+
+        CreateSoicSurfacePad _ _ ->
+            "soic-surface"
+
+        CreateRowSurfacePad _ _ ->
+            "row-surface"
+
+        CreateNumberedThroughPad _ ->
+            "numbered-thorugh"
+
+        CreateDipThroughPad _ _ ->
+            "dip-through"
+
+        CreateRowThroughPad _ _ ->
+            "row-through"
 
 
 viewSurfaceConductors : AppearanceDerivation a -> List Layer -> List (Svg Msg)
