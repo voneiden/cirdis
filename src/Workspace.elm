@@ -126,6 +126,18 @@ netsConductors model nets =
     List.filter (\c -> List.member (conductorNet c) nets) (allConductors model)
 
 
+type alias Pad =
+    { number : Maybe Int
+    , label : Maybe PadLabel
+    }
+
+
+type alias PadLabel =
+    { text : String
+    , rotation : Float
+    }
+
+
 type Conductor
     = Surface SurfaceConductor
     | Through ThroughConductor
@@ -167,26 +179,26 @@ conductorPoints conductor =
 
 
 type ThroughConductor
-    = ThroughPad Point Radius Net
+    = ThroughPad Pad Point Radius Net
 
 
 throughConductorNet : ThroughConductor -> Net
 throughConductorNet tht =
     case tht of
-        ThroughPad _ _ net ->
+        ThroughPad _ _ _ net ->
             net
 
 
 throughConductorPoints : ThroughConductor -> List Point
 throughConductorPoints tht =
     case tht of
-        ThroughPad point _ _ ->
+        ThroughPad _ point _ _ ->
             [ point ]
 
 
 type SurfaceConductor
     = Trace (List TracePoint) Net
-    | SurfacePad Point Width Net
+    | SurfacePad Pad Point Width Net
     | Zone (List Point) Net
 
 
@@ -392,7 +404,8 @@ conductorToVisualElement conductor =
 throughConductorToVisualElement : ThroughConductor -> List VisualElement
 throughConductorToVisualElement throughConductor =
     case throughConductor of
-        ThroughPad point radius _ ->
+        ThroughPad pad point radius _ ->
+            -- todo pad
             [ Circle (Through throughConductor) point radius ]
 
 
@@ -407,10 +420,12 @@ surfaceConductorToVisualElement hidden surfaceConductor =
             traceToVisualElements hidden c tracePoints
 
         -- todo
-        ( False, SurfacePad point width _ ) ->
+        ( False, SurfacePad pad point width _ ) ->
+            -- todo pad
             [ Square c point width ]
 
-        ( True, SurfacePad point width _ ) ->
+        ( True, SurfacePad pad point width _ ) ->
+            -- todo pad
             [ SquareOutline c point width ]
 
         ( _, Zone points net ) ->
@@ -442,7 +457,7 @@ surfaceConductorNet smt =
         Trace _ net ->
             net
 
-        SurfacePad _ _ net ->
+        SurfacePad _ _ _ net ->
             net
 
         Zone _ net ->
@@ -455,7 +470,7 @@ surfaceConductorPoints smt =
         Trace tracePoints _ ->
             List.map .point tracePoints
 
-        SurfacePad point _ _ ->
+        SurfacePad _ point _ _ ->
             [ point ]
 
         Zone points _ ->
@@ -774,10 +789,10 @@ update msg model =
                                     ( { model | tool = CreateTraceTool t2 }, Cmd.none, False )
 
                     CreateThroughPadTool ->
-                        ( addThroughConductor (ThroughPad point model.radius) model, Cmd.none, True )
+                        ( addThroughConductor (ThroughPad { number = Nothing, label = Nothing } point model.radius) model, Cmd.none, True )
 
                     CreateSurfacePadTool ->
-                        ( addSurfaceConductorNoNet (SurfacePad point (model.radius * 2)) model, Cmd.none, True )
+                        ( addSurfaceConductorNoNet (SurfacePad { number = Nothing, label = Nothing } point (model.radius * 2)) model, Cmd.none, True )
 
                     _ ->
                         ( model, Cmd.none, False )
@@ -1043,8 +1058,8 @@ incrementNextNetId model =
 addThroughConductor : (Net -> ThroughConductor) -> Model -> Model
 addThroughConductor toConductor model =
     case toConductor (NoNet model.nextNetId) of
-        ThroughPad point radius net ->
-            { model | nextNetId = model.nextNetId + 1, conductors = ThroughPad point radius net :: model.conductors }
+        ThroughPad pad point radius net ->
+            { model | nextNetId = model.nextNetId + 1, conductors = ThroughPad pad point radius net :: model.conductors }
 
 
 addSurfaceConductorNoNet : (Net -> SurfaceConductor) -> Model -> Model
@@ -1085,8 +1100,8 @@ updateConductorNet net conductor model =
             let
                 updatedThroughConductor =
                     case throughConductor of
-                        ThroughPad point radius _ ->
-                            ThroughPad point radius net
+                        ThroughPad pad point radius _ ->
+                            ThroughPad pad point radius net
             in
             { model
                 | conductors =
@@ -1112,8 +1127,8 @@ updateSurfaceConductorNet net surfaceConductor model =
                         Trace tracePoints _ ->
                             Trace tracePoints net
 
-                        SurfacePad point width _ ->
-                            SurfacePad point width net
+                        SurfacePad pad point width _ ->
+                            SurfacePad pad point width net
 
                         Zone points _ ->
                             Zone points net
@@ -1369,5 +1384,5 @@ snaps conductor conductorDistance defaultSnapDistance =
 
         Through tc ->
             case tc of
-                ThroughPad _ radius _ ->
+                ThroughPad _ _ radius _ ->
                     conductorDistance <= radius
