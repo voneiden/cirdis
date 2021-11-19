@@ -789,14 +789,32 @@ activeTool model tool =
 
 viewWorkspace : Model -> List (Svg Msg)
 viewWorkspace model =
+    let
+        current =
+            model.timeline.current
+
+        appearance =
+            { highlightNets = current.highlightNets
+            , select = current.select
+            }
+
+        conductors =
+            current.conductors
+    in
     if List.isEmpty model.timeline.current.layers then
         []
 
     else
         [ fromWorkspaceSvg (Workspace.viewTool model.timeline.current)
         ]
-            ++ List.map fromWorkspaceSvg (Workspace.viewSurfaceConductors model.timeline.current model.timeline.current.layers)
-            ++ List.map fromWorkspaceSvg (List.concatMap (List.map (Workspace.viewVisualElement model.timeline.current) << Workspace.throughConductorToVisualElement) model.timeline.current.conductors)
+            ++ [ fromWorkspaceSvg (Workspace.viewSurfaceConductors model.timeline.current model.timeline.current.layers) ]
+            ++ [ Svg.lazy2
+                    (\_ _ ->
+                        fromWorkspaceSvg <| Workspace.viewLazyThroughConductors model.timeline.current model.timeline.current.conductors
+                    )
+                    appearance
+                    conductors
+               ]
 
 
 {-| Convert a Transform into a SVG viewBox attribute value

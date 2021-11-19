@@ -5,6 +5,7 @@ import Html exposing (Attribute)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
 import Svg.Events as SvgE
+import Svg.Lazy
 
 
 
@@ -211,8 +212,8 @@ type alias ColorDefinition =
 type VisualElement
     = Circle Conductor Point Radius
     | ConstructionCircle Point Radius
-    | Square Conductor Point Width
-    | SquareOutline Conductor Point Width
+    | Square Conductor Point Width (Maybe String)
+    | SquareOutline Conductor Point Width (Maybe String)
     | ConstructionSquare Point Width (Maybe String)
     | Line Conductor Point Point Thickness
     | DashedLine Conductor Point Point Thickness
@@ -228,10 +229,10 @@ elementConductor element =
         ConstructionCircle _ _ ->
             Nothing
 
-        Square conductor _ _ ->
+        Square conductor _ _ _ ->
             Just conductor
 
-        SquareOutline conductor _ _ ->
+        SquareOutline conductor _ _ _ ->
             Just conductor
 
         ConstructionSquare _ _ _ ->
@@ -265,14 +266,14 @@ viewVisualElement model element =
                 , SvgA.fill "none"
                 ]
 
-        Square _ point width ->
+        Square _ point width maybeText ->
             viewSquare point
                 width
                 [ SvgA.fill <| deriveColor model element
                 ]
                 Nothing
 
-        SquareOutline _ point width ->
+        SquareOutline _ point width maybeText ->
             viewSquare point
                 width
                 [ SvgA.stroke <| deriveColor model element
@@ -409,6 +410,25 @@ throughConductorToVisualElement throughConductor =
             [ Circle (Through throughConductor) point radius ]
 
 
+viewLazyThroughConductors : AppearanceDerivation a -> List ThroughConductor -> Svg Msg
+viewLazyThroughConductors appearance throughConductors =
+    Svg.Lazy.lazy3
+        (\highlightNets select tc ->
+            viewThroughConductors { highlightNets = highlightNets, select = select } tc
+        )
+        appearance.highlightNets
+        appearance.select
+        throughConductors
+
+
+viewThroughConductors : AppearanceDerivation a -> List ThroughConductor -> Svg Msg
+viewThroughConductors appearance throughConductors =
+    Svg.g []
+        (List.concatMap throughConductorToVisualElement throughConductors
+            |> List.map (viewVisualElement appearance)
+        )
+
+
 surfaceConductorToVisualElement : Bool -> SurfaceConductor -> List VisualElement
 surfaceConductorToVisualElement hidden surfaceConductor =
     let
@@ -422,11 +442,11 @@ surfaceConductorToVisualElement hidden surfaceConductor =
         -- todo
         ( False, SurfacePad pad point width _ ) ->
             -- todo pad
-            [ Square c point width ]
+            [ Square c point width (Maybe.map String.fromInt pad.number) ]
 
         ( True, SurfacePad pad point width _ ) ->
             -- todo pad
-            [ SquareOutline c point width ]
+            [ SquareOutline c point width (Maybe.map String.fromInt pad.number) ]
 
         ( _, Zone points net ) ->
             -- TODO
@@ -794,6 +814,59 @@ update msg model =
                     CreateSurfacePadTool ->
                         ( addSurfaceConductorNoNet (SurfacePad { number = Nothing, label = Nothing } point (model.radius * 2)) model, Cmd.none, True )
 
+                    CreateNumberedSurfacePad pinNumber ->
+                        ( { model | tool = CreateNumberedSurfacePad (pinNumber + 1) }
+                            |> addSurfaceConductorNoNet (SurfacePad { number = Just pinNumber, label = Nothing } point (model.radius * 2))
+                        , Cmd.none
+                        , True
+                        )
+
+                    CreateSoicSurfacePad mp1 mp2 ->
+                        case ( mp1, mp2 ) of
+                            ( Just _, Nothing ) ->
+                                ( { model | tool = CreateSoicSurfacePad mp1 (Just point) }, Cmd.none, False )
+
+                            ( Just p1, Just p2 ) ->
+                                let
+                                    shape =
+                                        generateDoubleRow p1 p2 model.cursor
+                                in
+                                ( List.foldl
+                                    (\( shapePoint, shapePad ) m ->
+                                        addSurfaceConductorNoNet (SurfacePad shapePad shapePoint (model.radius * 2)) m
+                                    )
+                                    { model | tool = CreateSoicSurfacePad Nothing Nothing }
+                                    shape
+                                , Cmd.none
+                                , True
+                                )
+
+                            _ ->
+                                ( { model | tool = CreateSoicSurfacePad (Just point) Nothing }, Cmd.none, False )
+
+                    CreateRowSurfacePad mp1 mp2 ->
+                        case ( mp1, mp2 ) of
+                            ( Just _, Nothing ) ->
+                                ( { model | tool = CreateRowSurfacePad mp1 (Just point) }, Cmd.none, False )
+
+                            ( Just p1, Just p2 ) ->
+                                let
+                                    shape =
+                                        generateSingleRow p1 p2 model.cursor
+                                in
+                                ( List.foldl
+                                    (\( shapePoint, shapePad ) m ->
+                                        addSurfaceConductorNoNet (SurfacePad shapePad shapePoint (model.radius * 2)) m
+                                    )
+                                    { model | tool = CreateRowSurfacePad Nothing Nothing }
+                                    shape
+                                , Cmd.none
+                                , True
+                                )
+
+                            _ ->
+                                ( { model | tool = CreateRowSurfacePad (Just point) Nothing }, Cmd.none, False )
+
                     _ ->
                         ( model, Cmd.none, False )
 
@@ -870,10 +943,10 @@ update msg model =
                 ConstructionCircle point radius ->
                     ( model, Cmd.none, True )
 
-                Square conductor point width ->
+                Square conductor point width _ ->
                     ( model, Cmd.none, True )
 
-                SquareOutline conductor point width ->
+                SquareOutline conductor point width _ ->
                     ( model, Cmd.none, True )
 
                 ConstructionSquare _ _ _ ->
@@ -1175,13 +1248,191 @@ viewTool model =
             viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just <| String.fromInt pinNumber))
 
         CreateSoicSurfacePad mp1 mp2 ->
-            viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) Nothing)
+            case ( mp1, mp2 ) of
+                -- todo simplify
+                ( Just p1, Nothing ) ->
+                    Svg.g []
+                        [ viewVisualElement model (ConstructionSquare p1 (model.radius * 2) (Just "1"))
+                        , viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just "2"))
+                        ]
+
+                ( Just p1, Just p2 ) ->
+                    let
+                        shape =
+                            generateDoubleRow p1 p2 model.cursor
+                    in
+                    Svg.g [] <|
+                        List.map (\( point, pad ) -> viewVisualElement model (ConstructionSquare point (model.radius * 2) (Maybe.map String.fromInt pad.number))) shape
+
+                _ ->
+                    viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just "1"))
 
         CreateRowSurfacePad mp1 mp2 ->
-            viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) Nothing)
+            case ( mp1, mp2 ) of
+                ( Just p1, Nothing ) ->
+                    Svg.g []
+                        [ viewVisualElement model (ConstructionSquare p1 (model.radius * 2) (Just "1"))
+                        , viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just "2"))
+                        ]
+
+                ( Just p1, Just p2 ) ->
+                    let
+                        shape =
+                            generateSingleRow p1 p2 model.cursor
+                    in
+                    Svg.g [] <|
+                        List.map (\( point, pad ) -> viewVisualElement model (ConstructionSquare point (model.radius * 2) (Maybe.map String.fromInt pad.number))) shape
+
+                _ ->
+                    viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just "1"))
 
         _ ->
             Svg.text ""
+
+
+vectorSum : Point -> Point -> Point
+vectorSum p1 p2 =
+    { x = p1.x + p2.x, y = p1.y + p2.y }
+
+
+vectorMultiply : Point -> Float -> Point
+vectorMultiply p m =
+    { x = p.x * m, y = p.y * m }
+
+
+dot : Point -> Point -> Float
+dot p1 p2 =
+    p1.x * p2.x + p1.y * p2.y
+
+
+vectorLength : Point -> Float
+vectorLength p =
+    sqrt (p.x ^ 2 + p.y ^ 2)
+
+
+vectorProjection : Point -> Point -> Point -> ( Point, Point, Point )
+vectorProjection p1 p2 p3 =
+    let
+        -- Opposite vector a
+        a : Point
+        a =
+            { x = p3.x - p1.x, y = p3.y - p1.y }
+
+        -- Axis vector b
+        b : Point
+        b =
+            { x = p2.x - p1.x, y = p2.y - p1.y }
+
+        -- Axis length
+        bl =
+            vectorLength b
+
+        -- Axis unit
+        bu : Point
+        bu =
+            { x = b.x / bl, y = b.y / bl }
+
+        -- Projection length
+        pl =
+            dot a b / bl
+
+        -- Projection
+        p : Point
+        p =
+            { x = bu.x * pl, y = bu.y * pl }
+    in
+    ( a, b, p )
+
+
+vectorRejection : Point -> Point -> Point
+vectorRejection a p =
+    { x = a.x - p.x, y = a.y - p.y }
+
+
+generateProjectionRejection : Point -> Point -> Point -> ( Point, Point )
+generateProjectionRejection p1 p2 p3 =
+    let
+        -- Opposite vector a
+        a : Point
+        a =
+            { x = p3.x - p1.x, y = p3.y - p1.y }
+
+        -- Axis vector b
+        b : Point
+        b =
+            { x = p2.x - p1.x, y = p2.y - p1.y }
+
+        -- Axis length
+        bl =
+            vectorLength b
+
+        -- Axis unit
+        bu : Point
+        bu =
+            { x = b.x / bl, y = b.y / bl }
+
+        -- Projection length
+        pl =
+            dot a b / bl
+
+        -- Projection
+        p : Point
+        p =
+            { x = bu.x * pl, y = bu.y * pl }
+
+        -- Axis normal
+        bn =
+            { x = -b.y, y = b.x }
+
+        -- Axis normal unit
+        bnu =
+            { x = -bu.y, y = bu.x }
+
+        -- Rejection
+        r =
+            { x = a.x - p.x, y = a.y - p.y }
+    in
+    ( p, r )
+
+
+generateSingleRow : Point -> Point -> Point -> List ( Point, Pad )
+generateSingleRow p1 p2 p3 =
+    let
+        ( a, b, p ) =
+            vectorProjection p1 p2 p3
+
+        count =
+            round <| vectorLength p / vectorLength b
+    in
+    List.map (\number -> ( vectorSum p1 (vectorMultiply b (toFloat number)), { number = Just (number + 1), label = Nothing } )) (List.range 0 (max 1 count))
+
+
+generateDoubleRow : Point -> Point -> Point -> List ( Point, Pad )
+generateDoubleRow p1 p2 p3 =
+    let
+        ( a, b, p ) =
+            vectorProjection p1 p2 p3
+
+        r =
+            vectorRejection a p
+
+        p1r =
+            vectorSum p1 r
+
+        count =
+            max 2 <| round <| vectorLength p / vectorLength b
+
+        total =
+            count * 2
+    in
+    List.map (\number -> ( vectorSum p1 (vectorMultiply b (toFloat number)), { number = Just (number + 1), label = Nothing } )) (List.range 0 count)
+        ++ List.map
+            (\number ->
+                ( vectorSum p1r (vectorMultiply b (toFloat number))
+                , { number = Just (total - number + 2), label = Nothing }
+                )
+            )
+            (List.range 0 count)
 
 
 toolToString : Tool -> String
@@ -1221,7 +1472,7 @@ toolToString tool =
             "row-through"
 
 
-viewSurfaceConductors : AppearanceDerivation a -> List Layer -> List (Svg Msg)
+viewSurfaceConductors : AppearanceDerivation a -> List Layer -> Svg Msg
 viewSurfaceConductors model layers =
     case layers of
         layer :: hiddenLayers ->
@@ -1233,11 +1484,17 @@ viewSurfaceConductors model layers =
                 f hidden =
                     List.map (viewVisualElement model) << surfaceConductorToVisualElement hidden
             in
-            List.concatMap (f False) layer.conductors
-                ++ List.concatMap (f True) highlightedHiddenSurfaceConductors
+            Svg.Lazy.lazy2
+                (\c cHidden ->
+                    Svg.g [] <|
+                        List.concatMap (f False) c
+                            ++ List.concatMap (f True) cHidden
+                )
+                layer.conductors
+                highlightedHiddenSurfaceConductors
 
         [] ->
-            []
+            Svg.text ""
 
 
 viewTraceWithConstruction : Model -> List TracePoint -> Svg Msg
