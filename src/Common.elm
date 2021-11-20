@@ -45,6 +45,18 @@ type alias Point =
     }
 
 
+type alias Pad =
+    { number : Maybe Int
+    , label : Maybe PadLabel
+    }
+
+
+type alias PadLabel =
+    { text : String
+    , rotation : Float
+    }
+
+
 chainUpdate : (model -> ( model, Cmd msg )) -> ( model, Cmd msg ) -> ( model, Cmd msg )
 chainUpdate toNew ( model, cmd ) =
     let
@@ -120,3 +132,18 @@ unique list =
         )
         []
         list
+
+
+{-| Take a list of things (points for example) and return them as chained pairs
+
+p1, p2, p3, p4 --> (p1, p2), (p2, p3), (p3, p4)
+
+-}
+toPairs : List a -> List ( a, a )
+toPairs elements =
+    case elements of
+        p1 :: p2 :: rest ->
+            ( p1, p2 ) :: toPairs (p2 :: rest)
+
+        _ ->
+            []
