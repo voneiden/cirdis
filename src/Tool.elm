@@ -21,7 +21,7 @@ type Tool
     | CreateThroughPadTool
     | CreateNumberedThroughPad Int
     | CreateDipThroughPad (Maybe Point) (Maybe Point)
-    | CreateRowThroughPad (Maybe Point) (Maybe Point)
+    | CreateRowThroughPad Int (Maybe Point) (Maybe Point)
     | CreateZoneTool
 
 
@@ -58,8 +58,8 @@ resetTool tool =
         CreateDipThroughPad _ _ ->
             CreateDipThroughPad Nothing Nothing
 
-        CreateRowThroughPad _ _ ->
-            CreateRowThroughPad Nothing Nothing
+        CreateRowThroughPad _ _ _ ->
+            CreateRowThroughPad 1 Nothing Nothing
 
 
 toolToString : Tool -> String
@@ -95,7 +95,7 @@ toolToString tool =
         CreateDipThroughPad _ _ ->
             "dip-through"
 
-        CreateRowThroughPad _ _ ->
+        CreateRowThroughPad _ _ _ ->
             "row-through"
 
 
@@ -192,6 +192,67 @@ update msg model =
                 CreateThroughPadTool ->
                     ( addThroughConductor (ThroughPad { number = Nothing, label = Nothing } point model.radius) model, Cmd.none, True )
 
+                CreateNumberedThroughPad pinNumber ->
+                    ( { model | tool = CreateNumberedThroughPad (pinNumber + 1) }
+                        |> addThroughConductor (ThroughPad { number = Just pinNumber, label = Nothing } point model.radius)
+                    , Cmd.none
+                    , True
+                    )
+
+                CreateDipThroughPad mp1 mp2 ->
+                    case ( mp1, mp2 ) of
+                        ( Just _, Nothing ) ->
+                            ( { model | tool = CreateDipThroughPad mp1 (Just point) }, Cmd.none, False )
+
+                        ( Just p1, Just p2 ) ->
+                            let
+                                shape =
+                                    generateDoubleRow p1 p2 model.cursor
+                            in
+                            ( List.foldl
+                                (\( shapePoint, shapePad ) m ->
+                                    addThroughConductor (ThroughPad shapePad shapePoint model.radius) m
+                                )
+                                { model | tool = CreateDipThroughPad Nothing Nothing }
+                                shape
+                            , Cmd.none
+                            , True
+                            )
+
+                        _ ->
+                            ( { model | tool = CreateDipThroughPad (Just point) Nothing }, Cmd.none, False )
+
+                CreateRowThroughPad startNumber mp1 mp2 ->
+                    case ( mp1, mp2 ) of
+                        ( Just _, Nothing ) ->
+                            ( { model | tool = CreateRowThroughPad startNumber mp1 (Just point) }, Cmd.none, False )
+
+                        ( Just p1, Just p2 ) ->
+                            let
+                                shape =
+                                    generateSingleRow startNumber p1 p2 model.cursor
+
+                                lastPinNumber =
+                                    shape
+                                        |> List.reverse
+                                        |> List.head
+                                        |> Maybe.andThen (\( _, pad ) -> pad.number)
+                                        |> Maybe.map (\number -> number + 1)
+                                        |> Maybe.withDefault 1
+                            in
+                            ( List.foldl
+                                (\( shapePoint, shapePad ) m ->
+                                    addThroughConductor (ThroughPad shapePad shapePoint model.radius) m
+                                )
+                                { model | tool = CreateRowThroughPad lastPinNumber Nothing Nothing }
+                                shape
+                            , Cmd.none
+                            , True
+                            )
+
+                        _ ->
+                            ( { model | tool = CreateRowThroughPad startNumber (Just point) Nothing }, Cmd.none, False )
+
                 CreateSurfacePadTool ->
                     ( addSurfaceConductorNoNet (SurfacePad { number = Nothing, label = Nothing } point (model.radius * 2)) model, Cmd.none, True )
 
@@ -264,6 +325,15 @@ update msg model =
                 CreateThroughPadTool ->
                     ( updateRadius delta model, Cmd.none, False )
 
+                CreateNumberedThroughPad _ ->
+                    ( updateRadius delta model, Cmd.none, False )
+
+                CreateDipThroughPad _ _ ->
+                    ( updateRadius delta model, Cmd.none, False )
+
+                CreateRowThroughPad _ _ _ ->
+                    ( updateRadius delta model, Cmd.none, False )
+
                 CreateSurfacePadTool ->
                     ( updateRadius delta model, Cmd.none, False )
 
@@ -295,8 +365,17 @@ update msg model =
                         0
             in
             case model.tool of
+                CreateNumberedSurfacePad startNumber ->
+                    ( { model | tool = CreateNumberedSurfacePad (max 1 (startNumber + step)) }, Cmd.none, False )
+
                 CreateRowSurfacePad startNumber p1 p2 ->
                     ( { model | tool = CreateRowSurfacePad (max 1 (startNumber + step)) p1 p2 }, Cmd.none, False )
+
+                CreateNumberedThroughPad startNumber ->
+                    ( { model | tool = CreateNumberedThroughPad (max 1 (startNumber + step)) }, Cmd.none, False )
+
+                CreateRowThroughPad startNumber p1 p2 ->
+                    ( { model | tool = CreateRowThroughPad (max 1 (startNumber + step)) p1 p2 }, Cmd.none, False )
 
                 _ ->
                     ( model, Cmd.none, False )
@@ -344,16 +423,16 @@ update msg model =
                     ( { model | tool = indexToSurfacePadTool index }, Cmd.none, False )
 
                 CreateThroughPadTool ->
-                    ( model, Cmd.none, False )
+                    ( { model | tool = indexToThroughPadTool index }, Cmd.none, False )
 
                 CreateNumberedThroughPad _ ->
-                    ( model, Cmd.none, False )
+                    ( { model | tool = indexToThroughPadTool index }, Cmd.none, False )
 
                 CreateDipThroughPad _ _ ->
-                    ( model, Cmd.none, False )
+                    ( { model | tool = indexToThroughPadTool index }, Cmd.none, False )
 
-                CreateRowThroughPad _ _ ->
-                    ( model, Cmd.none, False )
+                CreateRowThroughPad _ _ _ ->
+                    ( { model | tool = indexToThroughPadTool index }, Cmd.none, False )
 
                 CreateZoneTool ->
                     ( model, Cmd.none, False )
@@ -424,7 +503,16 @@ viewTool model =
                 ]
 
         CreateThroughPadTool ->
-            viewVisualElement model (ConstructionCircle model.cursor model.radius)
+            viewVisualElement model (ConstructionCircle model.cursor model.radius Nothing)
+
+        CreateNumberedThroughPad pinNumber ->
+            viewVisualElement model (ConstructionCircle model.cursor model.radius (Just <| String.fromInt pinNumber))
+
+        CreateDipThroughPad mp1 mp2 ->
+            viewDoubleRowTool model mp1 mp2 model.radius ConstructionCircle
+
+        CreateRowThroughPad startNumber mp1 mp2 ->
+            viewRowTool model startNumber mp1 mp2 model.radius ConstructionCircle
 
         CreateSurfacePadTool ->
             viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) Nothing)
@@ -433,46 +521,56 @@ viewTool model =
             viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just <| String.fromInt pinNumber))
 
         CreateSoicSurfacePad mp1 mp2 ->
-            case ( mp1, mp2 ) of
-                -- todo simplify
-                ( Just p1, Nothing ) ->
-                    Svg.g []
-                        [ viewVisualElement model (ConstructionSquare p1 (model.radius * 2) (Just "1"))
-                        , viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just "2"))
-                        ]
-
-                ( Just p1, Just p2 ) ->
-                    let
-                        shape =
-                            generateDoubleRow p1 p2 model.cursor
-                    in
-                    Svg.g [] <|
-                        List.map (\( point, pad ) -> viewVisualElement model (ConstructionSquare point (model.radius * 2) (Maybe.map String.fromInt pad.number))) shape
-
-                _ ->
-                    viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just "1"))
+            viewDoubleRowTool model mp1 mp2 (model.radius * 2) ConstructionSquare
 
         CreateRowSurfacePad startNumber mp1 mp2 ->
-            case ( mp1, mp2 ) of
-                ( Just p1, Nothing ) ->
-                    Svg.g []
-                        [ viewVisualElement model (ConstructionSquare p1 (model.radius * 2) (Just <| String.fromInt startNumber))
-                        , viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just <| String.fromInt (startNumber + 1)))
-                        ]
-
-                ( Just p1, Just p2 ) ->
-                    let
-                        shape =
-                            generateSingleRow startNumber p1 p2 model.cursor
-                    in
-                    Svg.g [] <|
-                        List.map (\( point, pad ) -> viewVisualElement model (ConstructionSquare point (model.radius * 2) (Maybe.map String.fromInt pad.number))) shape
-
-                _ ->
-                    viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just <| String.fromInt startNumber))
+            viewRowTool model startNumber mp1 mp2 (model.radius * 2) ConstructionSquare
 
         _ ->
             Svg.text ""
+
+
+viewRowTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Int -> Maybe Point -> Maybe Point -> Float -> (Point -> Float -> Maybe String -> VisualElement) -> Svg Visual.Msg
+viewRowTool model startNumber mp1 mp2 size toVisual =
+    case ( mp1, mp2 ) of
+        ( Just p1, Nothing ) ->
+            Svg.g []
+                [ viewVisualElement model (toVisual p1 size (Just <| String.fromInt startNumber))
+                , viewVisualElement model (toVisual model.cursor size (Just <| String.fromInt (startNumber + 1)))
+                ]
+
+        ( Just p1, Just p2 ) ->
+            let
+                shape =
+                    generateSingleRow startNumber p1 p2 model.cursor
+            in
+            Svg.g [] <|
+                List.map (\( point, pad ) -> viewVisualElement model (toVisual point size (Maybe.map String.fromInt pad.number))) shape
+
+        _ ->
+            viewVisualElement model (toVisual model.cursor size (Just <| String.fromInt startNumber))
+
+
+viewDoubleRowTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Maybe Point -> Maybe Point -> Float -> (Point -> Float -> Maybe String -> VisualElement) -> Svg Visual.Msg
+viewDoubleRowTool model mp1 mp2 size toVisual =
+    case ( mp1, mp2 ) of
+        -- todo combine code
+        ( Just p1, Nothing ) ->
+            Svg.g []
+                [ viewVisualElement model (toVisual p1 size (Just "1"))
+                , viewVisualElement model (toVisual model.cursor size (Just "2"))
+                ]
+
+        ( Just p1, Just p2 ) ->
+            let
+                shape =
+                    generateDoubleRow p1 p2 model.cursor
+            in
+            Svg.g [] <|
+                List.map (\( point, pad ) -> viewVisualElement model (toVisual point size (Maybe.map String.fromInt pad.number))) shape
+
+        _ ->
+            viewVisualElement model (toVisual model.cursor size (Just "1"))
 
 
 
@@ -493,3 +591,19 @@ indexToSurfacePadTool index =
 
         _ ->
             resetTool CreateSurfacePadTool
+
+
+indexToThroughPadTool : Int -> Tool
+indexToThroughPadTool index =
+    case index of
+        2 ->
+            resetTool (CreateNumberedThroughPad 1)
+
+        3 ->
+            resetTool (CreateDipThroughPad Nothing Nothing)
+
+        4 ->
+            resetTool (CreateRowThroughPad 1 Nothing Nothing)
+
+        _ ->
+            resetTool CreateThroughPadTool

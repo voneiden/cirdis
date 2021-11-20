@@ -23,19 +23,6 @@ import Visual
 import Workspace
 
 
-
--- Todo things
--- allow scaling line segment width
--- copy segment width to next segment (set it actually to model so it stays on?)
--- placing pins and components?
--- staging area
--- via?
--- copper pours
--- undo/redo
--- snapping can be optimized with some kind of dict mapping to pixel regions
--- MAIN
-
-
 main : Program () Model Msg
 main =
     Browser.document
@@ -48,7 +35,6 @@ main =
 
 
 -- MODEL
--- The app needs to scale the svg with dom changes, but for now lets hardcode
 
 
 type alias Model =
@@ -102,11 +88,6 @@ type alias MousePosition =
     }
 
 
-defaultMousePosition : MousePosition
-defaultMousePosition =
-    { timeStamp = 0, offsetX = 0, offsetY = 0, button = 0 }
-
-
 mousePositionToPoint : BoundingClientRect -> Workspace.Transform -> MousePosition -> Point
 mousePositionToPoint b t mousePosition =
     let
@@ -126,11 +107,6 @@ type alias BoundingClientRect =
     , height : Float
     , top : Float
     }
-
-
-defaultBoundingClientRect : BoundingClientRect
-defaultBoundingClientRect =
-    { x = 0, y = 0, width = 500, height = 500, top = 0 }
 
 
 {-| Timeline for implementing redo/undo.
@@ -166,52 +142,6 @@ addTimelineEntry timeline next =
             , past = timeline.past ++ [ timeline.current ]
             , future = []
             }
-
-
-undo : Model -> ( Model, Cmd Msg )
-undo model =
-    let
-        timeline =
-            model.timeline
-    in
-    case List.reverse timeline.past of
-        [] ->
-            ( model, Cmd.none )
-
-        previous :: older ->
-            ( { model
-                | timeline =
-                    { timeline
-                        | current = previous
-                        , past = List.reverse older
-                        , future = timeline.current :: timeline.future
-                    }
-              }
-            , Cmd.none
-            )
-
-
-redo : Model -> ( Model, Cmd Msg )
-redo model =
-    let
-        timeline =
-            model.timeline
-    in
-    case timeline.future of
-        [] ->
-            ( model, Cmd.none )
-
-        next :: newer ->
-            ( { model
-                | timeline =
-                    { timeline
-                        | current = next
-                        , past = timeline.past ++ [ timeline.current ]
-                        , future = newer
-                    }
-              }
-            , Cmd.none
-            )
 
 
 init : () -> ( Model, Cmd Msg )
@@ -273,16 +203,6 @@ fromWorkspaceUpdate ( wsModel, wsCmd, updateTimeline ) model =
                 model.timeline
         in
         ( { model | timeline = { timeline | current = wsModel } }, Cmd.map (\wsMsg -> Workspace wsMsg) wsCmd )
-
-
-fromWorkspaceView : Html Workspace.Msg -> Html Msg
-fromWorkspaceView html =
-    Html.map (\msg -> Workspace msg) html
-
-
-fromWorkspaceSvg : Svg Workspace.Msg -> Svg Msg
-fromWorkspaceSvg svg =
-    Svg.map (\msg -> Workspace msg) svg
 
 
 fromVisualSvg : Svg Visual.Msg -> Svg Msg
@@ -544,6 +464,52 @@ update msg model =
                 |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
 
 
+undo : Model -> ( Model, Cmd Msg )
+undo model =
+    let
+        timeline =
+            model.timeline
+    in
+    case List.reverse timeline.past of
+        [] ->
+            ( model, Cmd.none )
+
+        previous :: older ->
+            ( { model
+                | timeline =
+                    { timeline
+                        | current = previous
+                        , past = List.reverse older
+                        , future = timeline.current :: timeline.future
+                    }
+              }
+            , Cmd.none
+            )
+
+
+redo : Model -> ( Model, Cmd Msg )
+redo model =
+    let
+        timeline =
+            model.timeline
+    in
+    case timeline.future of
+        [] ->
+            ( model, Cmd.none )
+
+        next :: newer ->
+            ( { model
+                | timeline =
+                    { timeline
+                        | current = next
+                        , past = timeline.past ++ [ timeline.current ]
+                        , future = newer
+                    }
+              }
+            , Cmd.none
+            )
+
+
 
 -- VIEW
 
@@ -553,7 +519,7 @@ view model =
     { title = "Circuit Dissector"
     , body =
         [ lazy
-            (\m ->
+            (\_ ->
                 div
                     [ id "root"
                     ]
@@ -609,7 +575,7 @@ sidebarKeyRow0 tool =
         Tool.CreateDipThroughPad _ _ ->
             throughPadSubTools tool
 
-        Tool.CreateRowThroughPad _ _ ->
+        Tool.CreateRowThroughPad _ _ _ ->
             throughPadSubTools tool
 
         _ ->
@@ -627,35 +593,35 @@ toolAttrsAndText ( tool, active ) =
                 class ""
     in
     case tool of
-        Tool.SelectTool maybeConductor ->
+        Tool.SelectTool _ ->
             ( [ activeAttr ], text "" )
 
-        Tool.CreateTraceTool constructionPoints ->
+        Tool.CreateTraceTool _ ->
             ( [ activeAttr ], text "" )
 
         Tool.CreateSurfacePadTool ->
             ( [ activeAttr ], span [ class "bordered" ] [ text "" ] )
 
-        Tool.CreateNumberedSurfacePad int ->
-            ( [ activeAttr ], span [ class "bordered" ] [ text <| String.fromInt int ] )
+        Tool.CreateNumberedSurfacePad pinNumber ->
+            ( [ activeAttr ], span [ class "bordered" ] [ text <| String.fromInt pinNumber ] )
 
-        Tool.CreateSoicSurfacePad mp1 mp2 ->
+        Tool.CreateSoicSurfacePad _ _ ->
             ( [ activeAttr ], text "SOIC" )
 
-        Tool.CreateRowSurfacePad _ mp1 mp2 ->
+        Tool.CreateRowSurfacePad _ _ _ ->
             ( [ activeAttr ], text "Row" )
 
         Tool.CreateThroughPadTool ->
-            ( [ activeAttr ], text "" )
+            ( [ activeAttr ], span [ class "circled" ] [ text "" ] )
 
-        Tool.CreateNumberedThroughPad int ->
-            ( [ activeAttr ], text "" )
+        Tool.CreateNumberedThroughPad pinNumber ->
+            ( [ activeAttr ], span [ class "circled" ] [ text <| String.fromInt pinNumber ] )
 
-        Tool.CreateDipThroughPad mp1 mp2 ->
-            ( [ activeAttr ], text "" )
+        Tool.CreateDipThroughPad _ _ ->
+            ( [ activeAttr ], text "DIP" )
 
-        Tool.CreateRowThroughPad mp1 mp2 ->
-            ( [ activeAttr ], text "" )
+        Tool.CreateRowThroughPad _ _ _ ->
+            ( [ activeAttr ], text "Row" )
 
         Tool.CreateZoneTool ->
             ( [ activeAttr ], text "" )
@@ -695,11 +661,24 @@ surfacePadSubTools tool =
 
 throughPadSubTools : Tool.Tool -> Html Msg
 throughPadSubTools tool =
+    let
+        ( b1Attrs, b1Text ) =
+            toolAttrsAndText (pickTool Tool.CreateThroughPadTool tool)
+
+        ( b2Attrs, b2Text ) =
+            toolAttrsAndText (pickTool (Tool.CreateNumberedThroughPad 1) tool)
+
+        ( b3Attrs, b3Text ) =
+            toolAttrsAndText (pickTool (Tool.CreateDipThroughPad Nothing Nothing) tool)
+
+        ( b4Attrs, b4Text ) =
+            toolAttrsAndText (pickTool (Tool.CreateRowThroughPad 1 Nothing Nothing) tool)
+    in
     div [ id "key-row-0" ]
-        [ button [] [ text "", span [ class "keycode" ] [ text "1" ] ]
-        , button [] [ text "", span [ class "keycode" ] [ text "2" ] ]
-        , button [] [ text "", span [ class "keycode" ] [ text "3" ] ]
-        , button [] [ text "", span [ class "keycode" ] [ text "4" ] ]
+        [ button b1Attrs [ b1Text, span [ class "keycode" ] [ text "1" ] ]
+        , button b2Attrs [ b2Text, span [ class "keycode" ] [ text "2" ] ]
+        , button b3Attrs [ b3Text, span [ class "keycode" ] [ text "3" ] ]
+        , button b4Attrs [ b4Text, span [ class "keycode" ] [ text "4" ] ]
         ]
 
 
@@ -787,6 +766,15 @@ activeTool model tool =
             True
 
         ( Tool.CreateThroughPadTool, Tool.CreateThroughPadTool ) ->
+            True
+
+        ( Tool.CreateNumberedThroughPad _, Tool.CreateThroughPadTool ) ->
+            True
+
+        ( Tool.CreateDipThroughPad _ _, Tool.CreateThroughPadTool ) ->
+            True
+
+        ( Tool.CreateRowThroughPad _ _ _, Tool.CreateThroughPadTool ) ->
             True
 
         ( Tool.CreateTraceTool _, Tool.CreateTraceTool _ ) ->
@@ -966,16 +954,16 @@ viewInfo model =
                             _ ->
                                 text "Place pin 3"
 
-                    Tool.CreateRowThroughPad mp1 mp2 ->
+                    Tool.CreateRowThroughPad _ mp1 mp2 ->
                         case ( mp1, mp2 ) of
                             ( Nothing, Nothing ) ->
-                                text "Place pin 1"
+                                text "Place 1st pin"
 
                             ( Just _, Nothing ) ->
-                                text "Place pin 2"
+                                text "Place 2nd pin"
 
                             _ ->
-                                text "Place pin 3"
+                                text "Place last pin"
     in
     div [] [ content ]
 

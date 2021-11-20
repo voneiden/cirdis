@@ -10,7 +10,7 @@ import Svg.Lazy
 
 type VisualElement
     = Circle Conductor Point Radius
-    | ConstructionCircle Point Radius
+    | ConstructionCircle Point Radius (Maybe String)
     | Square Conductor Point Width (Maybe String)
     | SquareOutline Conductor Point Width (Maybe String)
     | ConstructionSquare Point Width (Maybe String)
@@ -31,7 +31,7 @@ elementConductor element =
         Circle conductor _ _ ->
             Just conductor
 
-        ConstructionCircle _ _ ->
+        ConstructionCircle _ _ _ ->
             Nothing
 
         Square conductor _ _ _ ->
@@ -69,13 +69,19 @@ viewVisualElement model element =
                 , SvgE.onClick (Click element)
                 , SvgA.class "clickable"
                 ]
+                Nothing
 
-        ConstructionCircle point radius ->
+        ConstructionCircle point radius maybeText ->
+            let
+                color =
+                    deriveColor model element
+            in
             viewCircle point
                 radius
-                [ SvgA.stroke (deriveColor model element)
+                [ SvgA.stroke color
                 , SvgA.fill "none"
                 ]
+                (Maybe.map (\t -> ( t, color )) maybeText)
 
         Square _ point width maybeText ->
             viewSquare point
@@ -170,16 +176,38 @@ viewVisualElement model element =
                 ]
 
 
-viewCircle : Point -> Radius -> List (Svg.Attribute Msg) -> Svg Msg
-viewCircle point radius attrs =
-    Svg.circle
-        ([ SvgA.cx <| String.fromFloat point.x
-         , SvgA.cy <| String.fromFloat point.y
-         , SvgA.r <| String.fromFloat radius
-         ]
-            ++ attrs
-        )
-        []
+viewCircle : Point -> Radius -> List (Svg.Attribute Msg) -> Maybe ( String, String ) -> Svg Msg
+viewCircle point radius attrs maybeText =
+    let
+        textElement =
+            case maybeText of
+                Just ( text, color ) ->
+                    [ Svg.text_
+                        [ SvgA.x <| String.fromFloat point.x
+                        , SvgA.y <| String.fromFloat point.y
+                        , SvgA.dominantBaseline "middle"
+                        , SvgA.textAnchor "middle"
+                        , SvgA.pointerEvents "none"
+                        , SvgA.fontSize <| String.fromFloat (radius * 2) ++ "px"
+                        , SvgA.fill color
+                        ]
+                        [ Svg.text text ]
+                    ]
+
+                Nothing ->
+                    []
+    in
+    Svg.g [] <|
+        [ Svg.circle
+            ([ SvgA.cx <| String.fromFloat point.x
+             , SvgA.cy <| String.fromFloat point.y
+             , SvgA.r <| String.fromFloat radius
+             ]
+                ++ attrs
+            )
+            []
+        ]
+            ++ textElement
 
 
 viewSquare : Point -> Width -> List (Svg.Attribute Msg) -> Maybe ( String, String ) -> Svg Msg

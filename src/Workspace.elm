@@ -167,7 +167,7 @@ update msg model =
                 Tool.update (Tool.ShiftScroll delta) model
 
             else if ctrlPressed then
-                Tool.update (Tool.ShiftScroll delta) model
+                Tool.update (Tool.CtrlScroll delta) model
 
             else
                 ( { model | transform = zoomTransform model.transform delta }, Cmd.none, False )
@@ -193,7 +193,7 @@ update msg model =
                     ( model, Cmd.none, True )
 
                 -- TODO
-                Visual.ConstructionCircle point radius ->
+                Visual.ConstructionCircle point radius _ ->
                     ( model, Cmd.none, True )
 
                 Visual.Square conductor point width _ ->
