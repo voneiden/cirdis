@@ -423,7 +423,7 @@ update msg model =
                 |> chainUpdate (\m -> ( m, endWheel () ))
 
         MouseWheel delta ->
-            fromWorkspaceUpdate (Workspace.update (Workspace.ZoomDelta delta model.shift) model.timeline.current) model
+            fromWorkspaceUpdate (Workspace.update (Workspace.ZoomDelta delta model.shift model.ctrl) model.timeline.current) model
 
         Resize boundingClientRect ->
             -- TODO store this somewhere
@@ -590,7 +590,7 @@ sidebarKeyRow0 tool =
         Workspace.CreateSoicSurfacePad _ _ ->
             surfacePadSubTools tool
 
-        Workspace.CreateRowSurfacePad _ _ ->
+        Workspace.CreateRowSurfacePad _ _ _ ->
             surfacePadSubTools tool
 
         Workspace.CreateThroughPadTool ->
@@ -635,7 +635,7 @@ toolAttrsAndText ( tool, active ) =
         Workspace.CreateSoicSurfacePad mp1 mp2 ->
             ( [ activeAttr ], text "SOIC" )
 
-        Workspace.CreateRowSurfacePad mp1 mp2 ->
+        Workspace.CreateRowSurfacePad _ mp1 mp2 ->
             ( [ activeAttr ], text "Row" )
 
         Workspace.CreateThroughPadTool ->
@@ -676,7 +676,7 @@ surfacePadSubTools tool =
             toolAttrsAndText (pickTool (Workspace.CreateSoicSurfacePad Nothing Nothing) tool)
 
         ( b4Attrs, b4Text ) =
-            toolAttrsAndText (pickTool (Workspace.CreateRowSurfacePad Nothing Nothing) tool)
+            toolAttrsAndText (pickTool (Workspace.CreateRowSurfacePad 1 Nothing Nothing) tool)
     in
     div [ id "key-row-0" ]
         [ button b1Attrs [ b1Text, span [ class "keycode" ] [ text "1" ] ]
@@ -771,7 +771,7 @@ activeTool model tool =
         ( Workspace.CreateSoicSurfacePad _ _, Workspace.CreateSurfacePadTool ) ->
             True
 
-        ( Workspace.CreateRowSurfacePad _ _, Workspace.CreateSurfacePadTool ) ->
+        ( Workspace.CreateRowSurfacePad _ _ _, Workspace.CreateSurfacePadTool ) ->
             True
 
         ( Workspace.CreateThroughPadTool, Workspace.CreateThroughPadTool ) ->
@@ -929,16 +929,16 @@ viewInfo model =
                             _ ->
                                 text "Place pin 3"
 
-                    Workspace.CreateRowSurfacePad mp1 mp2 ->
+                    Workspace.CreateRowSurfacePad _ mp1 mp2 ->
                         case ( mp1, mp2 ) of
                             ( Nothing, Nothing ) ->
-                                text "Place pin 1"
+                                text "Place 1st pin"
 
                             ( Just _, Nothing ) ->
-                                text "Place pin 2"
+                                text "Place 2nd pin"
 
                             _ ->
-                                text "Place pin 3"
+                                text "Place last pin"
 
                     Workspace.CreateNumberedThroughPad pinNumber ->
                         text <| "Place pin " ++ String.fromInt pinNumber

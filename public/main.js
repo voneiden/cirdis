@@ -67,7 +67,7 @@ document.addEventListener("wheel", (e) => {
   e.stopPropagation()
   e.stopImmediatePropagation()
   return false;
-})
+}, {passive: false})
 
 cirdis.ports.startWheel.subscribe(() => {
   sendWheel = true;

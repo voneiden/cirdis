@@ -35,6 +35,10 @@ type alias ShiftPressed =
     Bool
 
 
+type alias CtrlPressed =
+    Bool
+
+
 type alias Point =
     { x : Float
     , y : Float

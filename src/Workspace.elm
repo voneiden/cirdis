@@ -1,6 +1,6 @@
 module Workspace exposing (..)
 
-import Common exposing (Color, Dragging, Point, Radius, ShiftPressed, Thickness, Width, cycle, distanceToPoint, fromPoint, unique)
+import Common exposing (Color, CtrlPressed, Dragging, Point, Radius, ShiftPressed, Thickness, Width, cycle, distanceToPoint, fromPoint, unique)
 import Html exposing (Attribute)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
@@ -580,7 +580,7 @@ type Tool
     | CreateSurfacePadTool
     | CreateNumberedSurfacePad Int
     | CreateSoicSurfacePad (Maybe Point) (Maybe Point)
-    | CreateRowSurfacePad (Maybe Point) (Maybe Point)
+    | CreateRowSurfacePad Int (Maybe Point) (Maybe Point) -- TODO row should support setting starting pin number
     | CreateThroughPadTool
     | CreateNumberedThroughPad Int
     | CreateDipThroughPad (Maybe Point) (Maybe Point)
@@ -705,7 +705,7 @@ deriveColor model element =
 type Msg
     = SetCursor Point ( Float, Float ) Dragging
     | LeftClick Point
-    | ZoomDelta Float ShiftPressed
+    | ZoomDelta Float ShiftPressed CtrlPressed
     | SetTool Tool
     | SetSubTool Int
     | ResetTool
@@ -844,33 +844,41 @@ update msg model =
                             _ ->
                                 ( { model | tool = CreateSoicSurfacePad (Just point) Nothing }, Cmd.none, False )
 
-                    CreateRowSurfacePad mp1 mp2 ->
+                    CreateRowSurfacePad startNumber mp1 mp2 ->
                         case ( mp1, mp2 ) of
                             ( Just _, Nothing ) ->
-                                ( { model | tool = CreateRowSurfacePad mp1 (Just point) }, Cmd.none, False )
+                                ( { model | tool = CreateRowSurfacePad startNumber mp1 (Just point) }, Cmd.none, False )
 
                             ( Just p1, Just p2 ) ->
                                 let
                                     shape =
-                                        generateSingleRow p1 p2 model.cursor
+                                        generateSingleRow startNumber p1 p2 model.cursor
+
+                                    lastPinNumber =
+                                        shape
+                                            |> List.reverse
+                                            |> List.head
+                                            |> Maybe.andThen (\( _, pad ) -> pad.number)
+                                            |> Maybe.map (\number -> number + 1)
+                                            |> Maybe.withDefault 1
                                 in
                                 ( List.foldl
                                     (\( shapePoint, shapePad ) m ->
                                         addSurfaceConductorNoNet (SurfacePad shapePad shapePoint (model.radius * 2)) m
                                     )
-                                    { model | tool = CreateRowSurfacePad Nothing Nothing }
+                                    { model | tool = CreateRowSurfacePad lastPinNumber Nothing Nothing }
                                     shape
                                 , Cmd.none
                                 , True
                                 )
 
                             _ ->
-                                ( { model | tool = CreateRowSurfacePad (Just point) Nothing }, Cmd.none, False )
+                                ( { model | tool = CreateRowSurfacePad startNumber (Just point) Nothing }, Cmd.none, False )
 
                     _ ->
                         ( model, Cmd.none, False )
 
-        ZoomDelta delta shiftPressed ->
+        ZoomDelta delta shiftPressed ctrlPressed ->
             if shiftPressed then
                 case model.tool of
                     CreateThroughPadTool ->
@@ -885,11 +893,30 @@ update msg model =
                     CreateSoicSurfacePad _ _ ->
                         ( updateRadius delta model, Cmd.none, False )
 
-                    CreateRowSurfacePad _ _ ->
+                    CreateRowSurfacePad _ _ _ ->
                         ( updateRadius delta model, Cmd.none, False )
 
                     CreateTraceTool _ ->
                         ( updateThickness delta model, Cmd.none, False )
+
+                    _ ->
+                        ( model, Cmd.none, False )
+
+            else if ctrlPressed then
+                let
+                    step =
+                        if delta > 0 then
+                            -1
+
+                        else if delta < 0 then
+                            1
+
+                        else
+                            0
+                in
+                case model.tool of
+                    CreateRowSurfacePad startNumber p1 p2 ->
+                        ( { model | tool = CreateRowSurfacePad (max 1 (startNumber + step)) p1 p2 }, Cmd.none, False )
 
                     _ ->
                         ( model, Cmd.none, False )
@@ -978,7 +1005,7 @@ update msg model =
                 CreateSoicSurfacePad _ _ ->
                     ( { model | tool = indexToSurfacePadTool index }, Cmd.none, False )
 
-                CreateRowSurfacePad _ _ ->
+                CreateRowSurfacePad _ _ _ ->
                     ( { model | tool = indexToSurfacePadTool index }, Cmd.none, False )
 
                 CreateThroughPadTool ->
@@ -1007,7 +1034,7 @@ indexToSurfacePadTool index =
             resetTool (CreateSoicSurfacePad Nothing Nothing)
 
         4 ->
-            resetTool (CreateRowSurfacePad Nothing Nothing)
+            resetTool (CreateRowSurfacePad 1 Nothing Nothing)
 
         _ ->
             resetTool CreateSurfacePadTool
@@ -1105,8 +1132,8 @@ resetTool tool =
         CreateSoicSurfacePad _ _ ->
             CreateSoicSurfacePad Nothing Nothing
 
-        CreateRowSurfacePad _ _ ->
-            CreateRowSurfacePad Nothing Nothing
+        CreateRowSurfacePad _ _ _ ->
+            CreateRowSurfacePad 1 Nothing Nothing
 
         CreateNumberedThroughPad _ ->
             CreateNumberedThroughPad 1
@@ -1267,24 +1294,24 @@ viewTool model =
                 _ ->
                     viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just "1"))
 
-        CreateRowSurfacePad mp1 mp2 ->
+        CreateRowSurfacePad startNumber mp1 mp2 ->
             case ( mp1, mp2 ) of
                 ( Just p1, Nothing ) ->
                     Svg.g []
-                        [ viewVisualElement model (ConstructionSquare p1 (model.radius * 2) (Just "1"))
-                        , viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just "2"))
+                        [ viewVisualElement model (ConstructionSquare p1 (model.radius * 2) (Just <| String.fromInt startNumber))
+                        , viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just <| String.fromInt (startNumber + 1)))
                         ]
 
                 ( Just p1, Just p2 ) ->
                     let
                         shape =
-                            generateSingleRow p1 p2 model.cursor
+                            generateSingleRow startNumber p1 p2 model.cursor
                     in
                     Svg.g [] <|
                         List.map (\( point, pad ) -> viewVisualElement model (ConstructionSquare point (model.radius * 2) (Maybe.map String.fromInt pad.number))) shape
 
                 _ ->
-                    viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just "1"))
+                    viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just <| String.fromInt startNumber))
 
         _ ->
             Svg.text ""
@@ -1395,8 +1422,8 @@ generateProjectionRejection p1 p2 p3 =
     ( p, r )
 
 
-generateSingleRow : Point -> Point -> Point -> List ( Point, Pad )
-generateSingleRow p1 p2 p3 =
+generateSingleRow : Int -> Point -> Point -> Point -> List ( Point, Pad )
+generateSingleRow startNumber p1 p2 p3 =
     let
         ( a, b, p ) =
             vectorProjection p1 p2 p3
@@ -1404,7 +1431,7 @@ generateSingleRow p1 p2 p3 =
         count =
             round <| vectorLength p / vectorLength b
     in
-    List.map (\number -> ( vectorSum p1 (vectorMultiply b (toFloat number)), { number = Just (number + 1), label = Nothing } )) (List.range 0 (max 1 count))
+    List.map (\number -> ( vectorSum p1 (vectorMultiply b (toFloat number)), { number = Just (number + startNumber), label = Nothing } )) (List.range 0 (max 1 count))
 
 
 generateDoubleRow : Point -> Point -> Point -> List ( Point, Pad )
@@ -1459,7 +1486,7 @@ toolToString tool =
         CreateSoicSurfacePad _ _ ->
             "soic-surface"
 
-        CreateRowSurfacePad _ _ ->
+        CreateRowSurfacePad _ _ _ ->
             "row-surface"
 
         CreateNumberedThroughPad _ ->
