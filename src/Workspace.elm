@@ -2,6 +2,7 @@ module Workspace exposing (..)
 
 import Common exposing (Color, CtrlPressed, Dragging, Point, Radius, ReferenceFrame, ShiftPressed, Thickness, Width, cycle)
 import Conductor exposing (..)
+import Form
 import Tool exposing (Tool)
 import Visual
 
@@ -26,6 +27,7 @@ type alias Model =
     , highlightNets : List Net
     , select : List Visual.VisualElement
     , ref : Maybe ReferenceFrame
+    , form : Form.Form
     }
 
 
@@ -46,6 +48,7 @@ defaultModel =
     , highlightNets = []
     , select = []
     , ref = Nothing
+    , form = Form.NoForm
     }
 
 
@@ -132,6 +135,7 @@ type Msg
     | Unfocus
     | VisualElementMsg Visual.Msg
     | ToolMsg Tool.Msg
+    | FormMsg Form.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg, Bool )
@@ -162,14 +166,14 @@ update msg model =
                 ( model, Cmd.none, False )
 
             else
-                Tool.update (Tool.LeftClick point) model
+                Tool.update ToolMsg (Tool.LeftClick point) model
 
         ZoomDelta delta shiftPressed ctrlPressed ->
             if shiftPressed then
-                Tool.update (Tool.ShiftScroll delta) model
+                Tool.update ToolMsg (Tool.ShiftScroll delta) model
 
             else if ctrlPressed then
-                Tool.update (Tool.CtrlScroll delta) model
+                Tool.update ToolMsg (Tool.CtrlScroll delta) model
 
             else
                 ( { model | transform = zoomTransform model.transform delta }, Cmd.none, False )
@@ -223,7 +227,36 @@ update msg model =
                     ( model, Cmd.none, False )
 
         ToolMsg toolMsg ->
-            Tool.update toolMsg model
+            Tool.update ToolMsg toolMsg model
+
+        FormMsg formMsg ->
+            case formMsg of
+                Form.ApplyForm ->
+                    case model.form of
+                        Form.NoForm ->
+                            ( model, Cmd.none, False )
+
+                        Form.RefForm refForm ->
+                            -- todo how do we proceed?
+                            -- TODO SetTool!
+                            case String.toFloat refForm.inputDistance of
+                                Just distance ->
+                                    ( { model
+                                        | form = Form.NoForm
+                                        , ref = Just { p1 = refForm.p1, p2 = refForm.p2, value = distance, unit = refForm.inputUnit }
+                                      }
+                                    , Cmd.none
+                                    , True
+                                    )
+
+                                Nothing ->
+                                    ( model, Cmd.none, False )
+
+                Form.CancelForm ->
+                    ( { model | form = Form.NoForm, tool = Tool.DefineReferenceFrame Nothing Nothing }, Cmd.none, True )
+
+                _ ->
+                    Form.update FormMsg formMsg model
 
 
 

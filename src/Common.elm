@@ -76,6 +76,15 @@ chainUpdate toNew ( model, cmd ) =
     in
     ( newModel, Cmd.batch [ cmd, newCmd ] )
 
+chainUpdate3 : (model -> ( model, Cmd msg, Bool )) -> ( model, Cmd msg, Bool ) -> ( model, Cmd msg, Bool )
+chainUpdate3 toNew ( model, cmd, updateTimeline ) =
+    let
+        ( newModel, newCmd, newUpdateTimeline ) =
+            toNew model
+    in
+    ( newModel, Cmd.batch [ cmd, newCmd ], updateTimeline || newUpdateTimeline )
+
+
 
 {-| Svg helper for converting points into SVG coordinate strings (like: M 5,5)
 -}

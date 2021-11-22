@@ -1,8 +1,11 @@
 module Tool exposing (..)
 
-import Common exposing (Point, Radius, ReferenceFrame, Thickness)
+import Browser.Dom
+import Common exposing (Point, Radius, ReferenceFrame, Thickness, chainUpdate, chainUpdate3)
 import Conductor exposing (Conductor, ConstructionPoint(..), MergeNet(..), ModelConductors, Net(..), SurfaceConductor(..), ThroughConductor(..), activeLayerSurfaceConductors, addSurfaceConductor, addSurfaceConductorNoNet, addThroughConductor, constructionPointsToConductors, constructionPointsToTrace, createTraceToHighlightNets, incrementNextNetId, mergeNets, snapTo, updateConductorNet)
+import Form
 import Svg exposing (Svg)
+import Task
 import Vector exposing (generateDoubleRow, generateSingleRow)
 import Visual exposing (ModelVisuals, VisualElement(..), viewVisualElement)
 
@@ -131,6 +134,7 @@ type Msg
     | SetTool Tool
     | Reset
     | SetSubTool Int
+    | FormMsg Form.Msg
 
 
 type alias ModelTools a =
@@ -141,11 +145,12 @@ type alias ModelTools a =
         , cursor : Point
         , snapDistance : Float
         , ref : Maybe ReferenceFrame
+        , form : Form.Form
     }
 
 
-update : Msg -> ModelTools (ModelVisuals (ModelConductors a b)) -> ( ModelTools (ModelVisuals (ModelConductors a b)), Cmd msg, Bool )
-update msg model =
+update : (Msg -> msg) -> Msg -> ModelTools (ModelVisuals (ModelConductors a b)) -> ( ModelTools (ModelVisuals (ModelConductors a b)), Cmd msg, Bool )
+update toMsg msg model =
     case msg of
         LeftClick point ->
             let
@@ -339,6 +344,18 @@ update msg model =
                         _ ->
                             ( { model | tool = CreateRowSurfacePad startNumber (Just point) Nothing }, Cmd.none, False )
 
+                DefineReferenceFrame mp1 mp2 ->
+                    case ( model.ref, mp1, mp2 ) of
+                        ( Nothing, Nothing, Nothing ) ->
+                            ( { model | tool = DefineReferenceFrame (Just point) Nothing }, Cmd.none, False )
+
+                        ( Nothing, Just p1, Nothing ) ->
+                            ( { model | tool = DefineReferenceFrame (Just p1) (Just point) }, Cmd.none, False )
+                                |> chainUpdate3 (\m -> Form.update (toMsg << FormMsg) (Form.RefMsg <| Form.RefInit model.ref p1 point) m)
+
+                        _ ->
+                            ( model, Cmd.none, False )
+
                 _ ->
                     ( model, Cmd.none, False )
 
@@ -448,40 +465,43 @@ update msg model =
                     ( model, Cmd.none, False )
 
                 CreateSurfacePadTool ->
-                    update (SetTool (indexToSurfacePadTool index)) model
+                    update toMsg (SetTool (indexToSurfacePadTool index)) model
 
                 CreateNumberedSurfacePad _ ->
-                    update (SetTool (indexToSurfacePadTool index)) model
+                    update toMsg (SetTool (indexToSurfacePadTool index)) model
 
                 CreateSoicSurfacePad _ _ ->
-                    update (SetTool (indexToSurfacePadTool index)) model
+                    update toMsg (SetTool (indexToSurfacePadTool index)) model
 
                 CreateRowSurfacePad _ _ _ ->
-                    update (SetTool (indexToSurfacePadTool index)) model
+                    update toMsg (SetTool (indexToSurfacePadTool index)) model
 
                 CreateThroughPadTool ->
-                    update (SetTool (indexToThroughPadTool index)) model
+                    update toMsg (SetTool (indexToThroughPadTool index)) model
 
                 CreateNumberedThroughPad _ ->
-                    update (SetTool (indexToThroughPadTool index)) model
+                    update toMsg (SetTool (indexToThroughPadTool index)) model
 
                 CreateDipThroughPad _ _ ->
-                    update (SetTool (indexToThroughPadTool index)) model
+                    update toMsg (SetTool (indexToThroughPadTool index)) model
 
                 CreateRowThroughPad _ _ _ ->
-                    update (SetTool (indexToThroughPadTool index)) model
+                    update toMsg (SetTool (indexToThroughPadTool index)) model
 
                 CreateZoneTool ->
                     ( model, Cmd.none, False )
 
                 DefineReferenceFrame _ _ ->
-                    update (SetTool (indexToDimensionTool index)) model
+                    update toMsg (SetTool (indexToDimensionTool index)) model
 
                 CreateDistanceDimension _ ->
-                    update (SetTool (indexToDimensionTool index)) model
+                    update toMsg (SetTool (indexToDimensionTool index)) model
 
                 CreateAngleDimension _ _ ->
-                    update (SetTool (indexToDimensionTool index)) model
+                    update toMsg (SetTool (indexToDimensionTool index)) model
+
+        FormMsg formMsg ->
+            Form.update (toMsg << FormMsg) formMsg model
 
 
 resetModelTool : { a | tool : Tool } -> { a | tool : Tool }
@@ -572,8 +592,47 @@ viewTool model =
         CreateRowSurfacePad startNumber mp1 mp2 ->
             viewRowTool model startNumber mp1 mp2 (model.radius * 2) ConstructionSquare
 
+        DefineReferenceFrame mp1 mp2 ->
+            viewDefineReferenceFrameTool model mp1 mp2
+
         _ ->
             Svg.text ""
+
+
+viewDefineReferenceFrameTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Maybe Point -> Maybe Point -> Svg Visual.Msg
+viewDefineReferenceFrameTool model mp1 mp2 =
+    let
+        cp =
+            snapTo model.snapDistance model.cursor model.conductors (activeLayerSurfaceConductors model) model.thickness
+    in
+    case ( model.ref, mp1, mp2 ) of
+        ( Just ref, _, _ ) ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint ref.p1 0))
+                , viewVisualElement model (ConstructionCrosshair (FreePoint ref.p2 0))
+                ]
+
+        ( Nothing, Nothing, Nothing ) ->
+            viewVisualElement model (ConstructionCrosshair cp)
+
+        ( Nothing, Just p1, Nothing ) ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
+                , viewVisualElement model (ConstructionCrosshair cp)
+                ]
+
+        ( Nothing, Nothing, Just p2 ) ->
+            -- TODO create a type that has only these three variants
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint p2 0))
+                , viewVisualElement model (ConstructionCrosshair cp)
+                ]
+
+        ( Nothing, Just p1, Just p2 ) ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
+                , viewVisualElement model (ConstructionCrosshair (FreePoint p2 0))
+                ]
 
 
 viewRowTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Int -> Maybe Point -> Maybe Point -> Float -> (Point -> Float -> Maybe String -> VisualElement) -> Svg Visual.Msg

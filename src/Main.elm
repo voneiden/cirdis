@@ -2,15 +2,17 @@ port module Main exposing (..)
 
 import Base64
 import Browser exposing (Document)
+import Browser.Dom as Dom
 import Browser.Events exposing (onKeyUp, onMouseUp)
 import Bytes exposing (Bytes)
 import Common exposing (Point, chainUpdate)
 import Dict exposing (Dict)
 import File exposing (File)
 import File.Select as Select
-import Html exposing (Attribute, Html, button, div, span, text)
-import Html.Attributes exposing (class, disabled, id)
-import Html.Events exposing (onClick, onMouseEnter, onMouseLeave)
+import Form
+import Html exposing (Attribute, Html, button, div, h5, input, p, span, text)
+import Html.Attributes exposing (class, disabled, id, placeholder, value)
+import Html.Events exposing (onBlur, onClick, onFocus, onInput, onMouseEnter, onMouseLeave)
 import Html.Lazy exposing (lazy)
 import Json.Decode as Decode exposing (Decoder)
 import Svg exposing (Svg)
@@ -45,6 +47,7 @@ type alias Model =
     , lastMousePosition : MousePosition
     , canvasBoundingClientRect : BoundingClientRect
     , timeline : WorkspaceTimeline
+    , keyDownPreventDefault : Bool
     , zPressed : Bool
     , xPressed : Bool
     , vPressed : Bool
@@ -153,6 +156,7 @@ init _ =
       , lastMousePosition = MousePosition 0 0 0 0
       , canvasBoundingClientRect = BoundingClientRect 0 0 0 0 0
       , timeline = defaultWorkspaceTimeline
+      , keyDownPreventDefault = True
       , zPressed = False
       , xPressed = False
       , vPressed = False
@@ -183,6 +187,8 @@ type Msg
     | Workspace Workspace.Msg
     | Undo
     | Redo
+    | StartCapture
+    | StopCapture
 
 
 type alias FileInfo =
@@ -212,6 +218,27 @@ fromVisualSvg svg =
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
+    let
+        ( updatedModel, cmd ) =
+            doUpdate msg model
+    in
+    -- stop keydown
+    case ( updatedModel.keyDownPreventDefault, updatedModel.timeline.current.form ) of
+        ( False, Form.NoForm ) ->
+            ( { updatedModel | keyDownPreventDefault = True }, Cmd.batch [ cmd, keyDownPreventDefault () ] )
+
+        ( True, Form.NoForm ) ->
+            ( updatedModel, cmd )
+
+        ( True, _ ) ->
+            ( { updatedModel | keyDownPreventDefault = False }, Cmd.batch [ cmd, keyDownAllowDefault () ] )
+
+        ( False, _ ) ->
+            ( updatedModel, cmd )
+
+
+doUpdate : Msg -> Model -> ( Model, Cmd Msg )
+doUpdate msg model =
     case msg of
         GetLayerImage ->
             ( model
@@ -357,72 +384,76 @@ update msg model =
             ( { model | canvasBoundingClientRect = boundingClientRect }, Cmd.none )
 
         KeyDown key ->
-            case key.keyCode of
-                86 ->
-                    -- v
-                    update (Workspace Workspace.CycleLayers) model
-                        |> chainUpdate (\m -> ( { m | vPressed = True }, Cmd.none ))
+            if model.keyDownPreventDefault then
+                case key.keyCode of
+                    86 ->
+                        -- v
+                        update (Workspace Workspace.CycleLayers) model
+                            |> chainUpdate (\m -> ( { m | vPressed = True }, Cmd.none ))
 
-                16 ->
-                    -- shift
-                    ( { model | shift = True }, Cmd.none )
+                    16 ->
+                        -- shift
+                        ( { model | shift = True }, Cmd.none )
 
-                17 ->
-                    -- ctrl
-                    ( { model | ctrl = True }, Cmd.none )
+                    17 ->
+                        -- ctrl
+                        ( { model | ctrl = True }, Cmd.none )
 
-                27 ->
-                    -- esc
-                    fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.Reset) model.timeline.current) model
+                    27 ->
+                        -- esc
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.Reset) model.timeline.current) model
 
-                81 ->
-                    -- q
-                    fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.SelectTool Nothing) model.timeline.current) model
+                    81 ->
+                        -- q
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.SelectTool Nothing) model.timeline.current) model
 
-                87 ->
-                    -- w
-                    fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateDistanceDimension Nothing) model.timeline.current) model
+                    87 ->
+                        -- w
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateDistanceDimension Nothing) model.timeline.current) model
 
-                65 ->
-                    -- a
-                    fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateThroughPadTool) model.timeline.current) model
+                    65 ->
+                        -- a
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateThroughPadTool) model.timeline.current) model
 
-                83 ->
-                    -- s
-                    fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateSurfacePadTool) model.timeline.current) model
+                    83 ->
+                        -- s
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateSurfacePadTool) model.timeline.current) model
 
-                68 ->
-                    -- d
-                    fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateTraceTool []) model.timeline.current) model
+                    68 ->
+                        -- d
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateTraceTool []) model.timeline.current) model
 
-                90 ->
-                    -- z
-                    update Undo model
-                        |> chainUpdate (\m -> ( { m | zPressed = True }, Cmd.none ))
+                    90 ->
+                        -- z
+                        update Undo model
+                            |> chainUpdate (\m -> ( { m | zPressed = True }, Cmd.none ))
 
-                88 ->
-                    -- x
-                    update Redo model
-                        |> chainUpdate (\m -> ( { m | xPressed = True }, Cmd.none ))
+                    88 ->
+                        -- x
+                        update Redo model
+                            |> chainUpdate (\m -> ( { m | xPressed = True }, Cmd.none ))
 
-                49 ->
-                    -- 1
-                    fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetSubTool 1) model.timeline.current) model
+                    49 ->
+                        -- 1
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetSubTool 1) model.timeline.current) model
 
-                50 ->
-                    -- 2
-                    fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetSubTool 2) model.timeline.current) model
+                    50 ->
+                        -- 2
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetSubTool 2) model.timeline.current) model
 
-                51 ->
-                    -- 3
-                    fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetSubTool 3) model.timeline.current) model
+                    51 ->
+                        -- 3
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetSubTool 3) model.timeline.current) model
 
-                52 ->
-                    -- 4
-                    fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetSubTool 4) model.timeline.current) model
+                    52 ->
+                        -- 4
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetSubTool 4) model.timeline.current) model
 
-                _ ->
-                    ( model, Cmd.none )
+                    _ ->
+                        ( model, Cmd.none )
+
+            else
+                ( model, Cmd.none )
 
         KeyUp key ->
             case key.keyCode of
@@ -466,6 +497,12 @@ update msg model =
         Redo ->
             redo model
                 |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
+
+        StartCapture ->
+            ( { model | keyDownPreventDefault = True }, keyDownPreventDefault () )
+
+        StopCapture ->
+            ( { model | keyDownPreventDefault = False }, keyDownAllowDefault () )
 
 
 undo : Model -> ( Model, Cmd Msg )
@@ -737,6 +774,11 @@ blankSubTools =
         ]
 
 
+workspaceMsg : Workspace.Msg -> Msg
+workspaceMsg msg =
+    Workspace <| msg
+
+
 toolMsg : Tool.Msg -> Msg
 toolMsg msg =
     Workspace <| Workspace.ToolMsg <| msg
@@ -784,6 +826,7 @@ sidebar model =
             , button [ activeClass model.vPressed, onClick <| Workspace Workspace.CycleLayers ] [ text "Cycle", span [ class "keycode" ] [ text "v" ] ]
             ]
         , viewInfo model
+        , viewForm model
         ]
 
 
@@ -1024,15 +1067,24 @@ viewInfo model =
                                 text "Place last pin"
 
                     Tool.DefineReferenceFrame mp1 mp2 ->
-                        case ( mp1, mp2 ) of
-                            ( Nothing, Nothing ) ->
+                        let
+                            current =
+                                model.timeline.current
+
+                            ref =
+                                current.ref
+                        in
+                        case ( ref, mp1, mp2 ) of
+                            ( Nothing, Nothing, Nothing ) ->
                                 text "Place first reference point"
 
-                            ( Just _, Nothing ) ->
+                            ( Nothing, Just _, Nothing ) ->
                                 text "Place second reference point"
 
                             _ ->
-                                text "Provide reference details"
+                                div []
+                                    [ text "TODO use C to clear"
+                                    ]
 
                     Tool.CreateDistanceDimension mp1 ->
                         case mp1 of
@@ -1054,6 +1106,11 @@ viewInfo model =
                                 text "Place second radial point"
     in
     div [] [ content ]
+
+
+viewForm : Model -> Html Msg
+viewForm model =
+    Form.view (Workspace << Workspace.FormMsg) model.timeline.current.form
 
 
 
@@ -1138,6 +1195,12 @@ port imageInformation : (List ImageInformation -> msg) -> Sub msg
 
 
 port setLayers : ( List ExternalLayer, Bool ) -> Cmd msg
+
+
+port keyDownPreventDefault : () -> Cmd msg
+
+
+port keyDownAllowDefault : () -> Cmd msg
 
 
 type alias ImageInformation =

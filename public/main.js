@@ -96,9 +96,15 @@ cirdis.ports.canvasSize.subscribe(() => {
 
 })
 
+// Keydown event handling
+let keyDownPreventDefault = true
+cirdis.ports.keyDownPreventDefault.subscribe(() => { keyDownPreventDefault = true } )
+cirdis.ports.keyDownAllowDefault.subscribe(() => { keyDownPreventDefault = false } )
+
 const ignoreKeyCodes = [116]
 const ignoreCtrlKeyCodes = [82, 48]
 document.addEventListener('keydown', (e) => {
+
   if (ignoreKeyCodes.includes(e.keyCode)) {
     return
   }
@@ -110,7 +116,11 @@ document.addEventListener('keydown', (e) => {
     shift: e.shiftKey,
     ctrl: e.ctrlKey
   })
-  e.preventDefault()
+
+  if (keyDownPreventDefault) {
+    e.preventDefault()
+  }
+
 })
 
 const checkImages = function checkImages(retryAttempt) {
