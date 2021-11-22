@@ -1,6 +1,6 @@
 module Tool exposing (..)
 
-import Common exposing (Point, Radius, Thickness)
+import Common exposing (Point, Radius, ReferenceFrame, Thickness)
 import Conductor exposing (Conductor, ConstructionPoint(..), MergeNet(..), ModelConductors, Net(..), SurfaceConductor(..), ThroughConductor(..), activeLayerSurfaceConductors, addSurfaceConductor, addSurfaceConductorNoNet, addThroughConductor, constructionPointsToConductors, constructionPointsToTrace, createTraceToHighlightNets, incrementNextNetId, mergeNets, snapTo, updateConductorNet)
 import Svg exposing (Svg)
 import Vector exposing (generateDoubleRow, generateSingleRow)
@@ -23,6 +23,9 @@ type Tool
     | CreateDipThroughPad (Maybe Point) (Maybe Point)
     | CreateRowThroughPad Int (Maybe Point) (Maybe Point)
     | CreateZoneTool
+    | DefineReferenceFrame (Maybe Point) (Maybe Point)
+    | CreateDistanceDimension (Maybe Point)
+    | CreateAngleDimension (Maybe Point) (Maybe Point)
 
 
 resetTool : Tool -> Tool
@@ -61,6 +64,15 @@ resetTool tool =
         CreateRowThroughPad _ _ _ ->
             CreateRowThroughPad 1 Nothing Nothing
 
+        DefineReferenceFrame _ _ ->
+            DefineReferenceFrame Nothing Nothing
+
+        CreateDistanceDimension _ ->
+            CreateDistanceDimension Nothing
+
+        CreateAngleDimension _ _ ->
+            CreateAngleDimension Nothing Nothing
+
 
 toolToString : Tool -> String
 toolToString tool =
@@ -98,6 +110,15 @@ toolToString tool =
         CreateRowThroughPad _ _ _ ->
             "row-through"
 
+        DefineReferenceFrame _ _ ->
+            "reference-frame"
+
+        CreateDistanceDimension _ ->
+            "distance-dimension"
+
+        CreateAngleDimension _ _ ->
+            "angle-dimension"
+
 
 
 -- UPDATE
@@ -119,6 +140,7 @@ type alias ModelTools a =
         , radius : Radius
         , cursor : Point
         , snapDistance : Float
+        , ref : Maybe ReferenceFrame
     }
 
 
@@ -381,6 +403,15 @@ update msg model =
                     ( model, Cmd.none, False )
 
         SetTool tool ->
+            let
+                checkRef t =
+                    case model.ref of
+                        Nothing ->
+                            ( { model | tool = DefineReferenceFrame Nothing Nothing }, Cmd.none, False )
+
+                        Just ref ->
+                            ( { model | tool = t }, Cmd.none, False )
+            in
             case ( tool, model.tool ) of
                 ( CreateTraceTool [], CreateTraceTool trace ) ->
                     ( { model
@@ -395,6 +426,12 @@ update msg model =
                     , Cmd.none
                     , False
                     )
+
+                ( CreateDistanceDimension _, _ ) ->
+                    checkRef tool
+
+                ( CreateAngleDimension _ _, _ ) ->
+                    checkRef tool
 
                 _ ->
                     ( { model | tool = tool, highlightNets = [] }, Cmd.none, False )
@@ -411,31 +448,40 @@ update msg model =
                     ( model, Cmd.none, False )
 
                 CreateSurfacePadTool ->
-                    ( { model | tool = indexToSurfacePadTool index }, Cmd.none, False )
+                    update (SetTool (indexToSurfacePadTool index)) model
 
                 CreateNumberedSurfacePad _ ->
-                    ( { model | tool = indexToSurfacePadTool index }, Cmd.none, False )
+                    update (SetTool (indexToSurfacePadTool index)) model
 
                 CreateSoicSurfacePad _ _ ->
-                    ( { model | tool = indexToSurfacePadTool index }, Cmd.none, False )
+                    update (SetTool (indexToSurfacePadTool index)) model
 
                 CreateRowSurfacePad _ _ _ ->
-                    ( { model | tool = indexToSurfacePadTool index }, Cmd.none, False )
+                    update (SetTool (indexToSurfacePadTool index)) model
 
                 CreateThroughPadTool ->
-                    ( { model | tool = indexToThroughPadTool index }, Cmd.none, False )
+                    update (SetTool (indexToThroughPadTool index)) model
 
                 CreateNumberedThroughPad _ ->
-                    ( { model | tool = indexToThroughPadTool index }, Cmd.none, False )
+                    update (SetTool (indexToThroughPadTool index)) model
 
                 CreateDipThroughPad _ _ ->
-                    ( { model | tool = indexToThroughPadTool index }, Cmd.none, False )
+                    update (SetTool (indexToThroughPadTool index)) model
 
                 CreateRowThroughPad _ _ _ ->
-                    ( { model | tool = indexToThroughPadTool index }, Cmd.none, False )
+                    update (SetTool (indexToThroughPadTool index)) model
 
                 CreateZoneTool ->
                     ( model, Cmd.none, False )
+
+                DefineReferenceFrame _ _ ->
+                    update (SetTool (indexToDimensionTool index)) model
+
+                CreateDistanceDimension _ ->
+                    update (SetTool (indexToDimensionTool index)) model
+
+                CreateAngleDimension _ _ ->
+                    update (SetTool (indexToDimensionTool index)) model
 
 
 resetModelTool : { a | tool : Tool } -> { a | tool : Tool }
@@ -607,3 +653,16 @@ indexToThroughPadTool index =
 
         _ ->
             resetTool CreateThroughPadTool
+
+
+indexToDimensionTool : Int -> Tool
+indexToDimensionTool index =
+    case index of
+        2 ->
+            resetTool (CreateDistanceDimension Nothing)
+
+        3 ->
+            resetTool (CreateAngleDimension Nothing Nothing)
+
+        _ ->
+            resetTool (DefineReferenceFrame Nothing Nothing)

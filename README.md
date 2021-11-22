@@ -45,15 +45,17 @@ Features
 * Snapping
 * Undo/redo
 * Keyboard + Mouse optimized UI
+* Component utilities (pin numbering, fast pin placement)
 
-<h5>Planned</h5>
+* <h5>Planned</h5>
 
+* Dimensioning (define a known distance and measure stuff)
+* Snap to angle
 * Prevent overlapping component placement
 * Deleting stuff
 * Snap to trace segment
 * Custom nets (name + color)
 * Pin labels
-* Component utilities (pin numbering, fast pin placement)
 * Save/Load project
 
 

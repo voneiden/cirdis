@@ -9,7 +9,7 @@ import Dict exposing (Dict)
 import File exposing (File)
 import File.Select as Select
 import Html exposing (Attribute, Html, button, div, span, text)
-import Html.Attributes exposing (class, id)
+import Html.Attributes exposing (class, disabled, id)
 import Html.Events exposing (onClick, onMouseEnter, onMouseLeave)
 import Html.Lazy exposing (lazy)
 import Json.Decode as Decode exposing (Decoder)
@@ -379,6 +379,10 @@ update msg model =
                     -- q
                     fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.SelectTool Nothing) model.timeline.current) model
 
+                87 ->
+                    -- w
+                    fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateDistanceDimension Nothing) model.timeline.current) model
+
                 65 ->
                     -- a
                     fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateThroughPadTool) model.timeline.current) model
@@ -578,6 +582,15 @@ sidebarKeyRow0 tool =
         Tool.CreateRowThroughPad _ _ _ ->
             throughPadSubTools tool
 
+        Tool.DefineReferenceFrame _ _ ->
+            dimensionSubTools tool
+
+        Tool.CreateDistanceDimension _ ->
+            dimensionSubTools tool
+
+        Tool.CreateAngleDimension _ _ ->
+            dimensionSubTools tool
+
         _ ->
             blankSubTools
 
@@ -625,6 +638,15 @@ toolAttrsAndText ( tool, active ) =
 
         Tool.CreateZoneTool ->
             ( [ activeAttr ], text "" )
+
+        Tool.DefineReferenceFrame _ _ ->
+            ( [ activeAttr ], text "Ref" )
+
+        Tool.CreateDistanceDimension _ ->
+            ( [ activeAttr ], text "Dist" )
+
+        Tool.CreateAngleDimension _ _ ->
+            ( [ activeAttr ], text "Angle" )
 
 
 pickTool : Tool.Tool -> Tool.Tool -> ( Tool.Tool, Bool )
@@ -682,6 +704,29 @@ throughPadSubTools tool =
         ]
 
 
+dimensionSubTools : Tool.Tool -> Html Msg
+dimensionSubTools tool =
+    let
+        ( b1Attrs, b1Text ) =
+            toolAttrsAndText (pickTool (Tool.DefineReferenceFrame Nothing Nothing) tool)
+
+        ( b2Attrs, b2Text ) =
+            toolAttrsAndText (pickTool (Tool.CreateDistanceDimension Nothing) tool)
+
+        ( b3Attrs, b3Text ) =
+            toolAttrsAndText (pickTool (Tool.CreateAngleDimension Nothing Nothing) tool)
+
+        ( b4Attrs, b4Text ) =
+            ( [ disabled True ], text "" )
+    in
+    div [ id "key-row-0" ]
+        [ button b1Attrs [ b1Text, span [ class "keycode" ] [ text "1" ] ]
+        , button b2Attrs [ b2Text, span [ class "keycode" ] [ text "2" ] ]
+        , button b3Attrs [ b3Text, span [ class "keycode" ] [ text "3" ] ]
+        , button b4Attrs [ b4Text, span [ class "keycode" ] [ text "4" ] ]
+        ]
+
+
 blankSubTools : Html Msg
 blankSubTools =
     div [ id "key-row-0" ]
@@ -709,7 +754,11 @@ sidebar model =
                 , onClick <| toolMsg <| Tool.SetTool <| Tool.SelectTool Nothing
                 ]
                 [ text "Select", span [ class "keycode" ] [ text "q" ] ]
-            , button [] [ text "", span [ class "keycode" ] [ text "w" ] ]
+            , button
+                [ activeClass <| activeTool model (Tool.DefineReferenceFrame Nothing Nothing)
+                , onClick <| toolMsg <| Tool.SetTool <| Tool.CreateDistanceDimension Nothing
+                ]
+                [ text "Gauge", span [ class "keycode" ] [ text "w" ] ]
             ]
         , div [ id "key-row-2" ]
             [ button
@@ -781,6 +830,15 @@ activeTool model tool =
             True
 
         ( Tool.CreateZoneTool, Tool.CreateZoneTool ) ->
+            True
+
+        ( Tool.DefineReferenceFrame _ _, Tool.DefineReferenceFrame _ _ ) ->
+            True
+
+        ( Tool.CreateDistanceDimension _, Tool.DefineReferenceFrame _ _ ) ->
+            True
+
+        ( Tool.CreateAngleDimension _ _, Tool.DefineReferenceFrame _ _ ) ->
             True
 
         _ ->
@@ -964,6 +1022,36 @@ viewInfo model =
 
                             _ ->
                                 text "Place last pin"
+
+                    Tool.DefineReferenceFrame mp1 mp2 ->
+                        case ( mp1, mp2 ) of
+                            ( Nothing, Nothing ) ->
+                                text "Place first reference point"
+
+                            ( Just _, Nothing ) ->
+                                text "Place second reference point"
+
+                            _ ->
+                                text "Provide reference details"
+
+                    Tool.CreateDistanceDimension mp1 ->
+                        case mp1 of
+                            Nothing ->
+                                text "Calculate distance between two points. Place first measurement point"
+
+                            Just _ ->
+                                text "Place second measurement point"
+
+                    Tool.CreateAngleDimension mp1 mp2 ->
+                        case ( mp1, mp2 ) of
+                            ( Nothing, Nothing ) ->
+                                text "Place first radial point"
+
+                            ( Just _, Nothing ) ->
+                                text "Place center point"
+
+                            _ ->
+                                text "Place second radial point"
     in
     div [] [ content ]
 

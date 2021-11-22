@@ -57,6 +57,17 @@ type alias PadLabel =
     }
 
 
+type alias ReferenceFrame =
+    { p1 : Point
+    , p2 : Point
+    , value : Float
+    , unit : String
+    }
+
+type Dimension
+    = DistanceDimension Point Point
+    | AngleDimension Point Point Point
+
 chainUpdate : (model -> ( model, Cmd msg )) -> ( model, Cmd msg ) -> ( model, Cmd msg )
 chainUpdate toNew ( model, cmd ) =
     let

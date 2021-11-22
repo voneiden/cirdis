@@ -1,6 +1,6 @@
 module Workspace exposing (..)
 
-import Common exposing (Color, CtrlPressed, Dragging, Point, Radius, ShiftPressed, Thickness, Width, cycle)
+import Common exposing (Color, CtrlPressed, Dragging, Point, Radius, ReferenceFrame, ShiftPressed, Thickness, Width, cycle)
 import Conductor exposing (..)
 import Tool exposing (Tool)
 import Visual
@@ -25,6 +25,7 @@ type alias Model =
     , autoNetColor : String
     , highlightNets : List Net
     , select : List Visual.VisualElement
+    , ref : Maybe ReferenceFrame
     }
 
 
@@ -44,6 +45,7 @@ defaultModel =
     , autoNetColor = ""
     , highlightNets = []
     , select = []
+    , ref = Nothing
     }
 
 
