@@ -26,6 +26,8 @@ type alias Model =
     , highlightNets : List Net
     , select : List Visual.VisualElement
     , ref : Maybe ReferenceFrame
+    , inputRefValue : String
+    , inputRefUnit : String
     }
 
 
@@ -46,6 +48,8 @@ defaultModel =
     , highlightNets = []
     , select = []
     , ref = Nothing
+    , inputRefValue = ""
+    , inputRefUnit = ""
     }
 
 
@@ -132,6 +136,10 @@ type Msg
     | Unfocus
     | VisualElementMsg Visual.Msg
     | ToolMsg Tool.Msg
+    | InputRefValue String
+    | InputRefUnit String
+    | ApplyRef
+    | ClearRef
 
 
 update : Msg -> Model -> ( Model, Cmd Msg, Bool )
@@ -162,14 +170,14 @@ update msg model =
                 ( model, Cmd.none, False )
 
             else
-                Tool.update (Tool.LeftClick point) model
+                Tool.update ToolMsg (Tool.LeftClick point) model
 
         ZoomDelta delta shiftPressed ctrlPressed ->
             if shiftPressed then
-                Tool.update (Tool.ShiftScroll delta) model
+                Tool.update ToolMsg (Tool.ShiftScroll delta) model
 
             else if ctrlPressed then
-                Tool.update (Tool.CtrlScroll delta) model
+                Tool.update ToolMsg (Tool.CtrlScroll delta) model
 
             else
                 ( { model | transform = zoomTransform model.transform delta }, Cmd.none, False )
@@ -223,8 +231,21 @@ update msg model =
                     ( model, Cmd.none, False )
 
         ToolMsg toolMsg ->
-            Tool.update toolMsg model
+            Tool.update ToolMsg toolMsg model
 
+        InputRefValue value ->
+            ( { model | inputRefValue = value}, Cmd.none, False )
 
+        InputRefUnit unit ->
+            ( { model | inputRefUnit = unit}, Cmd.none, False )
 
+        ApplyRef ->
+            case (model.tool, String.toFloat model.inputRefValue) of
+                (Tool.DefineReferenceFrame (Just p1) (Just p2), Just value) ->
+                    ({ model | tool = Tool.CreateDistanceDimension Nothing, ref = Just {p1 = p1, p2 = p2, value = value, unit = model.inputRefUnit}}, Cmd.none, True)
+
+                _ ->
+                    (model, Cmd.none, False)
+        ClearRef ->
+            ({ model | tool = Tool.CreateDistanceDimension Nothing, ref = Nothing}, Cmd.none, True)
 -- VIEWS

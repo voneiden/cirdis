@@ -96,9 +96,17 @@ cirdis.ports.canvasSize.subscribe(() => {
 
 })
 
+// Keydown event handling
+let capture = true
+cirdis.ports.startCapture.subscribe(() => { capture = true } )
+cirdis.ports.stopCapture.subscribe(() => { capture = false } )
+
 const ignoreKeyCodes = [116]
 const ignoreCtrlKeyCodes = [82, 48]
 document.addEventListener('keydown', (e) => {
+  if (!capture) {
+    return
+  }
   if (ignoreKeyCodes.includes(e.keyCode)) {
     return
   }
