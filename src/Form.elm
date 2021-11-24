@@ -2,14 +2,15 @@ module Form exposing (..)
 
 import Browser.Dom
 import Common exposing (Point, ReferenceFrame)
-import Html exposing (Html, button, div, h5, input, p, text)
-import Html.Attributes exposing (disabled, id, placeholder, value)
+import Html exposing (Html, button, div, h3, h4, h5, input, p, text)
+import Html.Attributes exposing (class, disabled, id, placeholder, value)
 import Html.Events exposing (onClick, onInput)
 import Task
 
 
 type Form
-    = NoForm
+    = WelcomeForm
+    | NoForm
     | RefForm RefFormData
 
 
@@ -106,11 +107,26 @@ update toMsg msg model =
 view : (Msg -> msg) -> Form -> Html msg
 view toMsg model =
     case model of
+        WelcomeForm ->
+            viewWelcome toMsg
+
         NoForm ->
             text ""
 
         RefForm refForm ->
             viewRef toMsg refForm
+
+
+viewWelcome : (Msg -> msg) -> Html msg
+viewWelcome toMsg =
+    div []
+        [ h3 [] [ text "Welcome to Circuit Dissector" ]
+        , p [] [ text "Please see the docs at TODO" ]
+        , p []
+            [ div [] [ text "Get started with" ]
+            , div [ class "import-layer" ] [ button [ onClick <| toMsg ApplyForm ] [ text <| "Import layer" ] ]
+            ]
+        ]
 
 
 viewRef : (Msg -> msg) -> RefFormData -> Html msg

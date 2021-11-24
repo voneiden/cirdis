@@ -1,6 +1,6 @@
 module Workspace exposing (..)
 
-import Common exposing (Color, CtrlPressed, Dragging, Point, Radius, ReferenceFrame, ShiftPressed, Thickness, Width, cycle)
+import Common exposing (Color, CtrlPressed, Dragging, Point, Radius, ReferenceFrame, ShiftPressed, Thickness, Width, chainUpdate3, cycle)
 import Conductor exposing (..)
 import Form
 import Tool exposing (Tool)
@@ -48,7 +48,7 @@ defaultModel =
     , highlightNets = []
     , select = []
     , ref = Nothing
-    , form = Form.NoForm
+    , form = Form.WelcomeForm
     }
 
 
@@ -251,6 +251,9 @@ update msg model =
 
                                 Nothing ->
                                     ( model, Cmd.none, False )
+
+                        Form.WelcomeForm ->
+                            ( { model | form = Form.NoForm }, Cmd.none, True )
 
                 Form.CancelForm ->
                     ( { model | form = Form.NoForm, tool = Tool.DefineReferenceFrame Nothing Nothing }, Cmd.none, True )

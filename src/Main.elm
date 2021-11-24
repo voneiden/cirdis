@@ -486,6 +486,14 @@ doUpdate msg model =
                         Workspace.CycleLayers ->
                             chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
 
+                        Workspace.FormMsg formMsg ->
+                            case ( model.timeline.current.form, formMsg ) of
+                                ( Form.WelcomeForm, Form.ApplyForm ) ->
+                                    chainUpdate (\m -> doUpdate GetLayerImage m)
+
+                                _ ->
+                                    identity
+
                         _ ->
                             identity
                    )
@@ -585,6 +593,7 @@ view model =
                                 )
                             ]
                         ]
+                    , viewForm model
                     ]
             )
             model
@@ -826,7 +835,6 @@ sidebar model =
             , button [ activeClass model.vPressed, onClick <| Workspace Workspace.CycleLayers ] [ text "Cycle", span [ class "keycode" ] [ text "v" ] ]
             ]
         , viewInfo model
-        , viewForm model
         ]
 
 
@@ -986,7 +994,7 @@ viewLayerControls wsLayer layer =
 
 viewLayerSelect : Html Msg
 viewLayerSelect =
-    div [ id "import-layer" ]
+    div [ class "import-layer" ]
         [ --input [ placeholder "New Layer", value title ] []
           button [ onClick <| GetLayerImage ] [ text <| "Import layer" ]
         ]
@@ -1110,7 +1118,18 @@ viewInfo model =
 
 viewForm : Model -> Html Msg
 viewForm model =
-    Form.view (Workspace << Workspace.FormMsg) model.timeline.current.form
+    let
+        form =
+            model.timeline.current.form
+
+        visible =
+            if form == Form.NoForm then
+                class ""
+
+            else
+                class "visible"
+    in
+    div [ id "form-root", visible ] [ Form.view (Workspace << Workspace.FormMsg) form ]
 
 
 

@@ -40,7 +40,7 @@ html, body {
   padding-right: 10px;
 }
 
-#import-layer {
+.import-layer {
   button {
     border: 1px solid black;
     background: $dark-bg;
@@ -109,6 +109,7 @@ html, body {
     }
   }
 }
+
 #key-row-0 {
   .circled,
   .bordered {
@@ -118,10 +119,12 @@ html, body {
     display: block;
 
   }
+
   .circled {
     border-radius: 7.5px;
   }
 }
+
 #key-row-1 {
   margin-top: 10px;
   margin-left: 10px;
@@ -141,4 +144,32 @@ svg.tool-select {
   .clickable {
     cursor: pointer;
   }
+}
+
+#form-root {
+  display: none;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  top: 0;
+  left: 0;
+  align-items: center;
+  justify-content: center;
+  & {
+    background-image: radial-gradient(currentColor 1px, transparent 1px);
+    background-size: calc(10 * 1px) calc(10 * 1px);
+  }
+
+  &.visible {
+    display: flex;
+  }
+
+  > div {
+    background-color: $light-bg;
+    padding: 20px;
+    color: $light-fg;
+  }
+
+
 }
