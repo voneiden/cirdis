@@ -199,7 +199,7 @@ type Msg
     | FormWelcomeImportLayer
     | FormWelcomeImportProject
     | FormRefApply Form.RefFormData
-    | FormRefCancel
+    | FormRefClear
 
 
 type alias FileInfo =
@@ -547,6 +547,7 @@ doUpdate msg model =
                         { workspace
                             | form = Form.NoForm
                             , ref = Just { p1 = refForm.p1, p2 = refForm.p2, value = distance, unit = refForm.inputUnit }
+                            , tool = Tool.CreateDistanceDimension Nothing
                         }
                         model
                     , Cmd.none
@@ -555,8 +556,20 @@ doUpdate msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
-        FormRefCancel ->
-            ( model, Cmd.none )
+        FormRefClear ->
+            let
+                workspace =
+                    model.timeline.current
+            in
+            ( addTimelineEntry
+                { workspace
+                    | form = Form.NoForm
+                    , ref = Nothing
+                    , tool = Tool.DefineReferenceFrame Nothing Nothing
+                }
+                model
+            , Cmd.none
+            )
 
 
 undo : Model -> ( Model, Cmd Msg )
@@ -647,8 +660,15 @@ view model =
     }
 
 
-sidebarKeyRow0 : Tool.Tool -> Html Msg
-sidebarKeyRow0 tool =
+sidebarKeyRow0 : Workspace.Model -> Html Msg
+sidebarKeyRow0 wsModel =
+    let
+        hasRef =
+            not (wsModel.ref == Nothing)
+
+        tool =
+            wsModel.tool
+    in
     case tool of
         Tool.CreateSurfacePadTool ->
             surfacePadSubTools tool
@@ -675,20 +695,20 @@ sidebarKeyRow0 tool =
             throughPadSubTools tool
 
         Tool.DefineReferenceFrame _ _ ->
-            dimensionSubTools tool
+            dimensionSubTools hasRef tool
 
         Tool.CreateDistanceDimension _ ->
-            dimensionSubTools tool
+            dimensionSubTools hasRef tool
 
         Tool.CreateAngleDimension _ _ ->
-            dimensionSubTools tool
+            dimensionSubTools hasRef tool
 
         _ ->
             blankSubTools
 
 
-toolAttrsAndText : ( Tool.Tool, Bool ) -> ( List (Attribute Msg), Html Msg )
-toolAttrsAndText ( tool, active ) =
+toolAttrsAndText : ( Tool.Tool, Bool ) -> Int -> ( List (Attribute Msg), Html Msg )
+toolAttrsAndText ( tool, active ) index =
     let
         activeAttr =
             if active then
@@ -696,49 +716,52 @@ toolAttrsAndText ( tool, active ) =
 
             else
                 class ""
+
+        clickAttr =
+            onClick <| Workspace <| Workspace.ToolMsg <| Tool.SetSubTool index
     in
     case tool of
         Tool.SelectTool _ ->
-            ( [ activeAttr ], text "" )
+            ( [ activeAttr, clickAttr ], text "" )
 
         Tool.CreateTraceTool _ ->
-            ( [ activeAttr ], text "" )
+            ( [ activeAttr, clickAttr ], text "" )
 
         Tool.CreateSurfacePadTool ->
-            ( [ activeAttr ], span [ class "bordered" ] [ text "" ] )
+            ( [ activeAttr, clickAttr ], span [ class "bordered" ] [ text "" ] )
 
         Tool.CreateNumberedSurfacePad pinNumber ->
-            ( [ activeAttr ], span [ class "bordered" ] [ text <| String.fromInt pinNumber ] )
+            ( [ activeAttr, clickAttr ], span [ class "bordered" ] [ text <| String.fromInt pinNumber ] )
 
         Tool.CreateSoicSurfacePad _ _ ->
-            ( [ activeAttr ], text "SOIC" )
+            ( [ activeAttr, clickAttr ], text "SOIC" )
 
         Tool.CreateRowSurfacePad _ _ _ ->
-            ( [ activeAttr ], text "Row" )
+            ( [ activeAttr, clickAttr ], text "Row" )
 
         Tool.CreateThroughPadTool ->
-            ( [ activeAttr ], span [ class "circled" ] [ text "" ] )
+            ( [ activeAttr, clickAttr ], span [ class "circled" ] [ text "" ] )
 
         Tool.CreateNumberedThroughPad pinNumber ->
-            ( [ activeAttr ], span [ class "circled" ] [ text <| String.fromInt pinNumber ] )
+            ( [ activeAttr, clickAttr ], span [ class "circled" ] [ text <| String.fromInt pinNumber ] )
 
         Tool.CreateDipThroughPad _ _ ->
-            ( [ activeAttr ], text "DIP" )
+            ( [ activeAttr, clickAttr ], text "DIP" )
 
         Tool.CreateRowThroughPad _ _ _ ->
-            ( [ activeAttr ], text "Row" )
+            ( [ activeAttr, clickAttr ], text "Row" )
 
         Tool.CreateZoneTool ->
-            ( [ activeAttr ], text "" )
+            ( [ activeAttr, clickAttr ], text "" )
 
         Tool.DefineReferenceFrame _ _ ->
-            ( [ activeAttr ], text "Ref" )
+            ( [ activeAttr, clickAttr ], text "Ref" )
 
         Tool.CreateDistanceDimension _ ->
-            ( [ activeAttr ], text "Dist" )
+            ( [ activeAttr, clickAttr ], text "Dist" )
 
         Tool.CreateAngleDimension _ _ ->
-            ( [ activeAttr ], text "Angle" )
+            ( [ activeAttr, clickAttr ], text "Angle" )
 
 
 pickTool : Tool.Tool -> Tool.Tool -> ( Tool.Tool, Bool )
@@ -754,16 +777,16 @@ surfacePadSubTools : Tool.Tool -> Html Msg
 surfacePadSubTools tool =
     let
         ( b1Attrs, b1Text ) =
-            toolAttrsAndText (pickTool Tool.CreateSurfacePadTool tool)
+            toolAttrsAndText (pickTool Tool.CreateSurfacePadTool tool) 1
 
         ( b2Attrs, b2Text ) =
-            toolAttrsAndText (pickTool (Tool.CreateNumberedSurfacePad 1) tool)
+            toolAttrsAndText (pickTool (Tool.CreateNumberedSurfacePad 1) tool) 2
 
         ( b3Attrs, b3Text ) =
-            toolAttrsAndText (pickTool (Tool.CreateSoicSurfacePad Nothing Nothing) tool)
+            toolAttrsAndText (pickTool (Tool.CreateSoicSurfacePad Nothing Nothing) tool) 3
 
         ( b4Attrs, b4Text ) =
-            toolAttrsAndText (pickTool (Tool.CreateRowSurfacePad 1 Nothing Nothing) tool)
+            toolAttrsAndText (pickTool (Tool.CreateRowSurfacePad 1 Nothing Nothing) tool) 4
     in
     div [ id "key-row-0" ]
         [ button b1Attrs [ b1Text, span [ class "keycode" ] [ text "1" ] ]
@@ -777,16 +800,16 @@ throughPadSubTools : Tool.Tool -> Html Msg
 throughPadSubTools tool =
     let
         ( b1Attrs, b1Text ) =
-            toolAttrsAndText (pickTool Tool.CreateThroughPadTool tool)
+            toolAttrsAndText (pickTool Tool.CreateThroughPadTool tool) 1
 
         ( b2Attrs, b2Text ) =
-            toolAttrsAndText (pickTool (Tool.CreateNumberedThroughPad 1) tool)
+            toolAttrsAndText (pickTool (Tool.CreateNumberedThroughPad 1) tool) 2
 
         ( b3Attrs, b3Text ) =
-            toolAttrsAndText (pickTool (Tool.CreateDipThroughPad Nothing Nothing) tool)
+            toolAttrsAndText (pickTool (Tool.CreateDipThroughPad Nothing Nothing) tool) 3
 
         ( b4Attrs, b4Text ) =
-            toolAttrsAndText (pickTool (Tool.CreateRowThroughPad 1 Nothing Nothing) tool)
+            toolAttrsAndText (pickTool (Tool.CreateRowThroughPad 1 Nothing Nothing) tool) 4
     in
     div [ id "key-row-0" ]
         [ button b1Attrs [ b1Text, span [ class "keycode" ] [ text "1" ] ]
@@ -796,27 +819,31 @@ throughPadSubTools tool =
         ]
 
 
-dimensionSubTools : Tool.Tool -> Html Msg
-dimensionSubTools tool =
-    let
-        ( b1Attrs, b1Text ) =
-            toolAttrsAndText (pickTool (Tool.DefineReferenceFrame Nothing Nothing) tool)
+dimensionSubTools : Bool -> Tool.Tool -> Html Msg
+dimensionSubTools hasRef tool =
+    if hasRef then
+        let
+            ( b1Attrs, b1Text ) =
+                toolAttrsAndText (pickTool (Tool.CreateDistanceDimension Nothing) tool) 1
 
-        ( b2Attrs, b2Text ) =
-            toolAttrsAndText (pickTool (Tool.CreateDistanceDimension Nothing) tool)
+            ( b2Attrs, b2Text ) =
+                toolAttrsAndText (pickTool (Tool.CreateAngleDimension Nothing Nothing) tool) 2
 
-        ( b3Attrs, b3Text ) =
-            toolAttrsAndText (pickTool (Tool.CreateAngleDimension Nothing Nothing) tool)
+            ( b3Attrs, b3Text ) =
+                ( [ disabled True ], text "" )
 
-        ( b4Attrs, b4Text ) =
-            ( [ disabled True ], text "" )
-    in
-    div [ id "key-row-0" ]
-        [ button b1Attrs [ b1Text, span [ class "keycode" ] [ text "1" ] ]
-        , button b2Attrs [ b2Text, span [ class "keycode" ] [ text "2" ] ]
-        , button b3Attrs [ b3Text, span [ class "keycode" ] [ text "3" ] ]
-        , button b4Attrs [ b4Text, span [ class "keycode" ] [ text "4" ] ]
-        ]
+            ( b4Attrs, b4Text ) =
+                toolAttrsAndText (pickTool (Tool.DefineReferenceFrame Nothing Nothing) tool) 4
+        in
+        div [ id "key-row-0" ]
+            [ button b1Attrs [ b1Text, span [ class "keycode" ] [ text "1" ] ]
+            , button b2Attrs [ b2Text, span [ class "keycode" ] [ text "2" ] ]
+            , button b3Attrs [ b3Text, span [ class "keycode" ] [ text "3" ] ]
+            , button b4Attrs [ b4Text, span [ class "keycode" ] [ text "4" ] ]
+            ]
+
+    else
+        blankSubTools
 
 
 blankSubTools : Html Msg
@@ -844,7 +871,7 @@ sidebar model =
     div [ id "sidebar" ]
         [ viewLayerList model.timeline.current.layers model.layers
         , viewLayerSelect
-        , sidebarKeyRow0 model.timeline.current.tool
+        , sidebarKeyRow0 model.timeline.current
         , div [ id "key-row-1" ]
             [ button
                 [ activeClass <| activeTool model (Tool.SelectTool Nothing)
@@ -1172,7 +1199,7 @@ viewForm model =
                 }
             , ref =
                 { apply = FormRefApply
-                , cancel = FormRefCancel
+                , clear = FormRefClear
                 }
             }
 

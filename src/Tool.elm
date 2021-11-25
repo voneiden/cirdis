@@ -450,6 +450,15 @@ update toMsg msg model =
                 ( CreateAngleDimension _ _, _ ) ->
                     checkRef tool
 
+                ( DefineReferenceFrame _ _, _ ) ->
+                    case model.ref of
+                        Just ref ->
+                            ( { model | tool = DefineReferenceFrame (Just ref.p1) (Just ref.p2) }, Cmd.none, False )
+                                |> chainUpdate3 (\m -> Form.update (toMsg << FormMsg) (Form.RefMsg <| Form.RefInit model.ref ref.p1 ref.p2) m)
+
+                        Nothing ->
+                            ( { model | tool = tool }, Cmd.none, False )
+
                 _ ->
                     ( { model | tool = tool, highlightNets = [] }, Cmd.none, False )
 
@@ -492,13 +501,13 @@ update toMsg msg model =
                     ( model, Cmd.none, False )
 
                 DefineReferenceFrame _ _ ->
-                    update toMsg (SetTool (indexToDimensionTool index)) model
+                    update toMsg (SetTool (indexToDimensionTool model.tool index)) model
 
                 CreateDistanceDimension _ ->
-                    update toMsg (SetTool (indexToDimensionTool index)) model
+                    update toMsg (SetTool (indexToDimensionTool model.tool index)) model
 
                 CreateAngleDimension _ _ ->
-                    update toMsg (SetTool (indexToDimensionTool index)) model
+                    update toMsg (SetTool (indexToDimensionTool model.tool index)) model
 
         FormMsg formMsg ->
             Form.update (toMsg << FormMsg) formMsg model
@@ -714,14 +723,17 @@ indexToThroughPadTool index =
             resetTool CreateThroughPadTool
 
 
-indexToDimensionTool : Int -> Tool
-indexToDimensionTool index =
+indexToDimensionTool : Tool -> Int -> Tool
+indexToDimensionTool oldTool index =
     case index of
-        2 ->
+        1 ->
             resetTool (CreateDistanceDimension Nothing)
 
-        3 ->
+        2 ->
             resetTool (CreateAngleDimension Nothing Nothing)
+
+        3 ->
+            oldTool
 
         _ ->
             resetTool (DefineReferenceFrame Nothing Nothing)

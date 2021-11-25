@@ -36,7 +36,7 @@ type alias ViewWelcome msg =
 
 type alias ViewRef msg =
     { apply : RefFormData -> msg
-    , cancel : msg
+    , clear : msg
     }
 
 
@@ -180,8 +180,8 @@ viewRef ref toMsg refForm =
             , button
                 [ --onFocus StopCapture
                   --, onBlur StartCapture
-                  onClick ref.cancel
+                  onClick ref.clear
                 ]
-                [ text "Clear" ]
+                [ text "Remove" ]
             ]
         ]
