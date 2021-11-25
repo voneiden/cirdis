@@ -22,14 +22,30 @@ type alias RefFormData =
     }
 
 
+type alias ViewData msg =
+    { welcome : ViewWelcome msg
+    , ref : ViewRef msg
+    }
+
+
+type alias ViewWelcome msg =
+    { importLayerMsg : msg
+    , importSvgMsg : msg
+    }
+
+
+type alias ViewRef msg =
+    { apply : RefFormData -> msg
+    , cancel : msg
+    }
+
+
 
 -- UPDATE
 
 
 type Msg
-    = ApplyForm
-    | CancelForm
-    | FocusResult (Result Browser.Dom.Error ())
+    = FocusResult (Result Browser.Dom.Error ())
     | RefMsg RefMsg
 
 
@@ -91,46 +107,41 @@ update toMsg msg model =
                 _ ->
                     ( model, Cmd.none, False )
 
-        ApplyForm ->
-            -- This must be handled upstream
-            ( model, Cmd.none, False )
-
-        CancelForm ->
-            -- This must be handled upstream
-            ( model, Cmd.none, False )
-
         FocusResult _ ->
             -- Don't really care about the result
             ( model, Cmd.none, False )
 
 
-view : (Msg -> msg) -> Form -> Html msg
-view toMsg model =
+view : ViewData msg -> (Msg -> msg) -> Form -> Html msg
+view viewData toMsg model =
     case model of
         WelcomeForm ->
-            viewWelcome toMsg
+            viewWelcome viewData.welcome
 
         NoForm ->
             text ""
 
         RefForm refForm ->
-            viewRef toMsg refForm
+            viewRef viewData.ref toMsg refForm
 
 
-viewWelcome : (Msg -> msg) -> Html msg
-viewWelcome toMsg =
+viewWelcome : ViewWelcome msg -> Html msg
+viewWelcome welcome =
     div []
         [ h3 [] [ text "Welcome to Circuit Dissector" ]
         , p [] [ text "Please see the docs at TODO" ]
         , p []
             [ div [] [ text "Get started with" ]
-            , div [ class "import-layer" ] [ button [ onClick <| toMsg ApplyForm ] [ text <| "Import layer" ] ]
+            , div [ class "import-layer" ]
+                [ button [ onClick <| welcome.importLayerMsg ] [ text <| "Import layer" ]
+                , button [ onClick <| welcome.importSvgMsg ] [ text <| "Import project" ]
+                ]
             ]
         ]
 
 
-viewRef : (Msg -> msg) -> RefFormData -> Html msg
-viewRef toMsg refForm =
+viewRef : ViewRef msg -> (Msg -> msg) -> RefFormData -> Html msg
+viewRef ref toMsg refForm =
     let
         distance =
             String.toFloat refForm.inputDistance
@@ -162,14 +173,14 @@ viewRef toMsg refForm =
             ]
         , p []
             [ button
-                [ onClick <| toMsg ApplyForm
+                [ onClick <| ref.apply refForm
                 , disabled <| distance == Nothing
                 ]
                 [ text "Apply" ]
             , button
                 [ --onFocus StopCapture
                   --, onBlur StartCapture
-                  onClick <| toMsg CancelForm
+                  onClick ref.cancel
                 ]
                 [ text "Clear" ]
             ]

@@ -130,21 +130,28 @@ defaultWorkspaceTimeline =
     }
 
 
-addTimelineEntry : WorkspaceTimeline -> Workspace.Model -> WorkspaceTimeline
-addTimelineEntry timeline next =
-    case timeline.future of
-        [] ->
-            { timeline
-                | current = next
-                , past = timeline.past ++ [ timeline.current ]
-            }
+addTimelineEntry : Workspace.Model -> Model -> Model
+addTimelineEntry next model =
+    let
+        timeline =
+            model.timeline
+    in
+    { model
+        | timeline =
+            case timeline.future of
+                [] ->
+                    { timeline
+                        | current = next
+                        , past = timeline.past ++ [ timeline.current ]
+                    }
 
-        _ ->
-            -- todo branching?
-            { current = next
-            , past = timeline.past ++ [ timeline.current ]
-            , future = []
-            }
+                _ ->
+                    -- todo branching?
+                    { current = next
+                    , past = timeline.past ++ [ timeline.current ]
+                    , future = []
+                    }
+    }
 
 
 init : () -> ( Model, Cmd Msg )
@@ -189,6 +196,10 @@ type Msg
     | Redo
     | StartCapture
     | StopCapture
+    | FormWelcomeImportLayer
+    | FormWelcomeImportProject
+    | FormRefApply Form.RefFormData
+    | FormRefCancel
 
 
 type alias FileInfo =
@@ -201,14 +212,19 @@ type alias FileInfo =
 fromWorkspaceUpdate : ( Workspace.Model, Cmd Workspace.Msg, Bool ) -> Model -> ( Model, Cmd Msg )
 fromWorkspaceUpdate ( wsModel, wsCmd, updateTimeline ) model =
     if updateTimeline then
-        ( { model | timeline = addTimelineEntry model.timeline wsModel }, Cmd.map (\wsMsg -> Workspace wsMsg) wsCmd )
+        ( addTimelineEntry wsModel model, Cmd.map (\wsMsg -> Workspace wsMsg) wsCmd )
 
     else
-        let
-            timeline =
-                model.timeline
-        in
-        ( { model | timeline = { timeline | current = wsModel } }, Cmd.map (\wsMsg -> Workspace wsMsg) wsCmd )
+        ( replaceCurrentWorkspace wsModel model, Cmd.map (\wsMsg -> Workspace wsMsg) wsCmd )
+
+
+replaceCurrentWorkspace : Workspace.Model -> Model -> Model
+replaceCurrentWorkspace wsModel model =
+    let
+        timeline =
+            model.timeline
+    in
+    { model | timeline = { timeline | current = wsModel } }
 
 
 fromVisualSvg : Svg Visual.Msg -> Svg Msg
@@ -319,12 +335,11 @@ doUpdate msg model =
             in
             ( { model
                 | layers = Dict.remove layerId model.layers
-                , timeline =
-                    addTimelineEntry model.timeline
-                        { workspace
-                            | layers = List.filter (\l -> not <| l.id == layerId) workspace.layers
-                        }
               }
+                |> addTimelineEntry
+                    { workspace
+                        | layers = List.filter (\l -> not <| l.id == layerId) workspace.layers
+                    }
             , Cmd.none
             )
                 |> chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
@@ -486,14 +501,6 @@ doUpdate msg model =
                         Workspace.CycleLayers ->
                             chainUpdate (\m -> ( m, setLayers ( List.filterMap (toExternalLayer m) m.timeline.current.layers, False ) ))
 
-                        Workspace.FormMsg formMsg ->
-                            case ( model.timeline.current.form, formMsg ) of
-                                ( Form.WelcomeForm, Form.ApplyForm ) ->
-                                    chainUpdate (\m -> doUpdate GetLayerImage m)
-
-                                _ ->
-                                    identity
-
                         _ ->
                             identity
                    )
@@ -511,6 +518,45 @@ doUpdate msg model =
 
         StopCapture ->
             ( { model | keyDownPreventDefault = False }, keyDownAllowDefault () )
+
+        FormWelcomeImportLayer ->
+            let
+                workspace =
+                    model.timeline.current
+
+                newWorkspace =
+                    { workspace | form = Form.NoForm }
+            in
+            doUpdate GetLayerImage (replaceCurrentWorkspace newWorkspace model)
+
+        FormWelcomeImportProject ->
+            let
+                workspace =
+                    model.timeline.current
+            in
+            doUpdate GetLayerImage (addTimelineEntry { workspace | form = Form.NoForm } model)
+
+        FormRefApply refForm ->
+            case String.toFloat refForm.inputDistance of
+                Just distance ->
+                    let
+                        workspace =
+                            model.timeline.current
+                    in
+                    ( addTimelineEntry
+                        { workspace
+                            | form = Form.NoForm
+                            , ref = Just { p1 = refForm.p1, p2 = refForm.p2, value = distance, unit = refForm.inputUnit }
+                        }
+                        model
+                    , Cmd.none
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        FormRefCancel ->
+            ( model, Cmd.none )
 
 
 undo : Model -> ( Model, Cmd Msg )
@@ -1119,6 +1165,17 @@ viewInfo model =
 viewForm : Model -> Html Msg
 viewForm model =
     let
+        viewData =
+            { welcome =
+                { importLayerMsg = FormWelcomeImportLayer
+                , importSvgMsg = FormWelcomeImportProject -- TODO implement
+                }
+            , ref =
+                { apply = FormRefApply
+                , cancel = FormRefCancel
+                }
+            }
+
         form =
             model.timeline.current.form
 
@@ -1129,7 +1186,7 @@ viewForm model =
             else
                 class "visible"
     in
-    div [ id "form-root", visible ] [ Form.view (Workspace << Workspace.FormMsg) form ]
+    div [ id "form-root", visible ] [ Form.view viewData (Workspace << Workspace.FormMsg) form ]
 
 
 

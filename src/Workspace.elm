@@ -230,36 +230,7 @@ update msg model =
             Tool.update ToolMsg toolMsg model
 
         FormMsg formMsg ->
-            case formMsg of
-                Form.ApplyForm ->
-                    case model.form of
-                        Form.NoForm ->
-                            ( model, Cmd.none, False )
-
-                        Form.RefForm refForm ->
-                            -- todo how do we proceed?
-                            -- TODO SetTool!
-                            case String.toFloat refForm.inputDistance of
-                                Just distance ->
-                                    ( { model
-                                        | form = Form.NoForm
-                                        , ref = Just { p1 = refForm.p1, p2 = refForm.p2, value = distance, unit = refForm.inputUnit }
-                                      }
-                                    , Cmd.none
-                                    , True
-                                    )
-
-                                Nothing ->
-                                    ( model, Cmd.none, False )
-
-                        Form.WelcomeForm ->
-                            ( { model | form = Form.NoForm }, Cmd.none, True )
-
-                Form.CancelForm ->
-                    ( { model | form = Form.NoForm, tool = Tool.DefineReferenceFrame Nothing Nothing }, Cmd.none, True )
-
-                _ ->
-                    Form.update FormMsg formMsg model
+            Form.update FormMsg formMsg model
 
 
 
