@@ -1,6 +1,6 @@
 module Visual exposing (..)
 
-import Common exposing (Point, Radius, Thickness, Width, fromPoint, toPairs)
+import Common exposing (Dimension(..), Point, Radius, Thickness, Width, fromPoint, toPairs)
 import Conductor exposing (Conductor(..), ConstructionPoint(..), Net(..), SurfaceConductor(..), ThroughConductor(..), TracePoint, conductorNet, constructionPointA, constructionPointPoint, surfaceConductorNet)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
@@ -416,3 +416,28 @@ viewSurfaceConductors model layers =
 
         [] ->
             Svg.text ""
+
+
+viewDimensions : ModelVisuals a -> List Dimension -> Svg Msg
+viewDimensions model dimensions =
+    Svg.g [] (List.map (viewDimension model) dimensions)
+
+
+viewDimension : ModelVisuals a -> Dimension -> Svg Msg
+viewDimension model dimension =
+    case dimension of
+        DistanceDimension p1 p2 ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCircle p1 5 Nothing)
+                , viewVisualElement model (ConstructionLine p1 p2 1)
+                , viewVisualElement model (ConstructionCircle p2 5 Nothing)
+                ]
+
+        AngleDimension p1 p2 p3 ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCircle p1 5 Nothing)
+                , viewVisualElement model (ConstructionCircle p2 5 Nothing)
+                , viewVisualElement model (ConstructionCircle p3 5 Nothing)
+                , viewVisualElement model (ConstructionLine p1 p2 1)
+                , viewVisualElement model (ConstructionLine p1 p3 1)
+                ]

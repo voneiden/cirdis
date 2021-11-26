@@ -1,11 +1,9 @@
 module Tool exposing (..)
 
-import Browser.Dom
-import Common exposing (Point, Radius, ReferenceFrame, Thickness, chainUpdate, chainUpdate3)
-import Conductor exposing (Conductor, ConstructionPoint(..), MergeNet(..), ModelConductors, Net(..), SurfaceConductor(..), ThroughConductor(..), activeLayerSurfaceConductors, addSurfaceConductor, addSurfaceConductorNoNet, addThroughConductor, constructionPointsToConductors, constructionPointsToTrace, createTraceToHighlightNets, incrementNextNetId, mergeNets, snapTo, updateConductorNet)
+import Common exposing (Dimension(..), Point, Radius, ReferenceFrame, Thickness, chainUpdate3)
+import Conductor exposing (Conductor, ConstructionPoint(..), MergeNet(..), ModelConductors, Net(..), SurfaceConductor(..), ThroughConductor(..), activeLayerSurfaceConductors, addSurfaceConductor, addSurfaceConductorNoNet, addThroughConductor, constructionPointPoint, constructionPointsToConductors, constructionPointsToTrace, createTraceToHighlightNets, incrementNextNetId, mergeNets, snapTo, updateConductorNet)
 import Form
 import Svg exposing (Svg)
-import Task
 import Vector exposing (generateDoubleRow, generateSingleRow)
 import Visual exposing (ModelVisuals, VisualElement(..), viewVisualElement)
 
@@ -146,6 +144,7 @@ type alias ModelTools a =
         , snapDistance : Float
         , ref : Maybe ReferenceFrame
         , form : Form.Form
+        , dimensions : List Dimension
     }
 
 
@@ -355,6 +354,37 @@ update toMsg msg model =
 
                         _ ->
                             ( model, Cmd.none, False )
+
+                CreateDistanceDimension mp1 ->
+                    case mp1 of
+                        Nothing ->
+                            ( { model | tool = CreateDistanceDimension (Just point) }, Cmd.none, False )
+
+                        Just p1 ->
+                            ( { model
+                                | tool = CreateDistanceDimension Nothing
+                                , dimensions = DistanceDimension p1 point :: model.dimensions
+                              }
+                            , Cmd.none
+                            , False
+                            )
+
+                CreateAngleDimension mp1 mp2 ->
+                    case ( mp1, mp2 ) of
+                        ( Just _, Nothing ) ->
+                            ( { model | tool = CreateAngleDimension mp1 (Just point) }, Cmd.none, False )
+
+                        ( Just p1, Just p2 ) ->
+                            ( { model
+                                | tool = CreateAngleDimension Nothing Nothing
+                                , dimensions = AngleDimension p1 p2 point :: model.dimensions
+                              }
+                            , Cmd.none
+                            , False
+                            )
+
+                        _ ->
+                            ( { model | tool = CreateAngleDimension (Just point) Nothing }, Cmd.none, False )
 
                 _ ->
                     ( model, Cmd.none, False )
@@ -604,6 +634,12 @@ viewTool model =
         DefineReferenceFrame mp1 mp2 ->
             viewDefineReferenceFrameTool model mp1 mp2
 
+        CreateDistanceDimension mp1 ->
+            viewCreateDistanceDimensionTool model mp1
+
+        CreateAngleDimension mp1 mp2 ->
+            viewCreateAngleDimensionTool model mp1 mp2
+
         _ ->
             Svg.text ""
 
@@ -642,6 +678,51 @@ viewDefineReferenceFrameTool model mp1 mp2 =
                 [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
                 , viewVisualElement model (ConstructionCrosshair (FreePoint p2 0))
                 ]
+
+
+viewCreateDistanceDimensionTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Maybe Point -> Svg Visual.Msg
+viewCreateDistanceDimensionTool model mp1 =
+    let
+        cp =
+            snapTo model.snapDistance model.cursor model.conductors (activeLayerSurfaceConductors model) model.thickness
+    in
+    case mp1 of
+        Nothing ->
+            viewVisualElement model (ConstructionCrosshair cp)
+
+        Just p1 ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
+                , viewVisualElement model (ConstructionLine p1 (constructionPointPoint cp) 1)
+                , viewVisualElement model (ConstructionCrosshair cp)
+                ]
+
+
+viewCreateAngleDimensionTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Maybe Point -> Maybe Point -> Svg Visual.Msg
+viewCreateAngleDimensionTool model mp1 mp2 =
+    let
+        cp =
+            snapTo model.snapDistance model.cursor model.conductors (activeLayerSurfaceConductors model) model.thickness
+    in
+    case ( mp1, mp2 ) of
+        ( Just p1, Nothing ) ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
+                , viewVisualElement model (ConstructionLine p1 (constructionPointPoint cp) 1)
+                , viewVisualElement model (ConstructionCrosshair cp)
+                ]
+
+        ( Just p1, Just p2 ) ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
+                , viewVisualElement model (ConstructionLine p1 p2 1)
+                , viewVisualElement model (ConstructionCrosshair (FreePoint p2 0))
+                , viewVisualElement model (ConstructionLine p1 (constructionPointPoint cp) 1)
+                , viewVisualElement model (ConstructionCrosshair cp)
+                ]
+
+        _ ->
+            viewVisualElement model (ConstructionCrosshair cp)
 
 
 viewRowTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Int -> Maybe Point -> Maybe Point -> Float -> (Point -> Float -> Maybe String -> VisualElement) -> Svg Visual.Msg

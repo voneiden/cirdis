@@ -21,7 +21,7 @@ import Svg.Events as SvgE
 import Svg.Lazy as Svg
 import Task
 import Tool
-import Visual
+import Visual exposing (viewDimensions)
 import Workspace
 
 
@@ -997,6 +997,7 @@ viewWorkspace model =
                     appearance
                     conductors
                ]
+            ++ [ fromVisualSvg (viewDimensions current current.dimensions) ]
 
 
 {-| Convert a Transform into a SVG viewBox attribute value

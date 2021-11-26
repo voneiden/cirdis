@@ -1,6 +1,6 @@
 module Workspace exposing (..)
 
-import Common exposing (Color, CtrlPressed, Dragging, Point, Radius, ReferenceFrame, ShiftPressed, Thickness, Width, chainUpdate3, cycle)
+import Common exposing (Color, CtrlPressed, Dimension, Dragging, Point, Radius, ReferenceFrame, ShiftPressed, Thickness, Width, chainUpdate3, cycle)
 import Conductor exposing (..)
 import Form
 import Tool exposing (Tool)
@@ -28,6 +28,7 @@ type alias Model =
     , select : List Visual.VisualElement
     , ref : Maybe ReferenceFrame
     , form : Form.Form
+    , dimensions : List Dimension
     }
 
 
@@ -49,6 +50,7 @@ defaultModel =
     , select = []
     , ref = Nothing
     , form = Form.WelcomeForm
+    , dimensions = []
     }
 
 
