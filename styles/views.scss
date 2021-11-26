@@ -40,23 +40,33 @@ html, body {
   padding-right: 10px;
 }
 
-.import-layer {
-  button {
-    border: 1px solid black;
-    background: $dark-bg;
-    color: white;
-    height: 50px;
-    width: 150px;
-    cursor: pointer;
+button {
+  border: 1px solid black;
+  background: $dark-bg;
+  color: white;
+  height: 50px;
+  width: 150px;
+  cursor: pointer;
 
-    &:active {
-      border: 1px solid $light-fg;
-    }
-
-    &:focus-visible {
-      outline: none;
-    }
+  &:active {
+    border: 1px solid $light-fg;
   }
+
+  &:not(:last-of-type) {
+    margin-right: 5px;
+  }
+
+  &:not(:first-of-type) {
+    margin-left: 5px;
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.import-layer {
+
 
   margin-top: 25px;
   margin-bottom: 50px;
@@ -156,6 +166,7 @@ svg.tool-select {
   left: 0;
   align-items: center;
   justify-content: center;
+
   & {
     background-image: radial-gradient(currentColor 1px, transparent 1px);
     background-size: calc(10 * 1px) calc(10 * 1px);

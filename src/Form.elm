@@ -2,9 +2,10 @@ module Form exposing (..)
 
 import Browser.Dom
 import Common exposing (Point, ReferenceFrame)
-import Html exposing (Html, button, div, h3, h4, h5, input, p, text)
-import Html.Attributes exposing (class, disabled, id, placeholder, value)
-import Html.Events exposing (onClick, onInput)
+import Html exposing (Attribute, Html, button, div, h3, input, p, text)
+import Html.Attributes exposing (autocomplete, class, disabled, id, placeholder, value)
+import Html.Events exposing (keyCode, onClick, onFocus, onInput, preventDefaultOn)
+import Json.Decode as Json exposing (Decoder)
 import Task
 
 
@@ -46,13 +47,34 @@ type alias ViewRef msg =
 
 type Msg
     = FocusResult (Result Browser.Dom.Error ())
+    | Focus String
     | RefMsg RefMsg
+    | Nop
 
 
 type RefMsg
     = RefInit (Maybe ReferenceFrame) Point Point
     | RefInputDistance String
     | RefInputUnit String
+
+
+enterApply : (Msg -> msg) -> msg -> Attribute msg
+enterApply toMsg applyMsg =
+    preventDefaultOn "keydown" (Json.map (parseEnter applyMsg (toMsg Nop)) keyCode)
+
+
+enterFocus : (Msg -> msg) -> String -> Attribute msg
+enterFocus toMsg focusId =
+    preventDefaultOn "keydown" (Json.map (parseEnter (toMsg (Focus focusId)) (toMsg Nop)) keyCode)
+
+
+parseEnter : msg -> msg -> Int -> ( msg, Bool )
+parseEnter enterMsg elseMsg key =
+    if key == 13 then
+        ( enterMsg, True )
+
+    else
+        ( elseMsg, False )
 
 
 type alias ModelForm a =
@@ -111,6 +133,16 @@ update toMsg msg model =
             -- Don't really care about the result
             ( model, Cmd.none, False )
 
+        Focus focusId ->
+            let
+                cmd =
+                    Browser.Dom.focus focusId |> Task.attempt (toMsg << FocusResult)
+            in
+            ( model, cmd, False )
+
+        Nop ->
+            ( model, Cmd.none, False )
+
 
 view : ViewData msg -> (Msg -> msg) -> Form -> Html msg
 view viewData toMsg model =
@@ -147,11 +179,13 @@ viewRef ref toMsg refForm =
             String.toFloat refForm.inputDistance
     in
     div []
-        [ h5 [] [ text "Provide reference details" ]
+        [ h3 [] [ text "Provide reference details" ]
         , p []
             [ div [] [ text "Distance" ]
             , input
                 [ id "reference-distance-input"
+                , autocomplete False
+                , enterFocus toMsg "reference-value-input"
 
                 --, onFocus FocusDistance
                 --, onBlur BlurDistance
@@ -163,9 +197,12 @@ viewRef ref toMsg refForm =
         , p []
             [ div [] [ text "Value" ]
             , input
-                [ -- onFocus FocusUnit
-                  --, onBlur BlurUnit
-                  placeholder "mm"
+                [ id "reference-value-input"
+                , enterApply toMsg (ref.apply refForm)
+
+                --, onBlur BlurUnit
+                , placeholder "mm"
+                , autocomplete False
                 , value refForm.inputUnit
                 , onInput <| toMsg << RefMsg << RefInputUnit
                 ]
@@ -173,7 +210,8 @@ viewRef ref toMsg refForm =
             ]
         , p []
             [ button
-                [ onClick <| ref.apply refForm
+                [ id "reference-apply"
+                , onClick <| ref.apply refForm
                 , disabled <| distance == Nothing
                 ]
                 [ text "Apply" ]
