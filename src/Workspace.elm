@@ -1,6 +1,6 @@
 module Workspace exposing (..)
 
-import Common exposing (Color, CtrlPressed, Dimension, Dragging, Point, Radius, ReferenceFrame, ShiftPressed, Thickness, Width, chainUpdate3, cycle)
+import Common exposing (Color, CtrlPressed, Dimension, Dragging, Point, Radius, ReferenceFrame, ShiftPressed, Thickness, Width, cycle)
 import Conductor exposing (..)
 import Form
 import Tool exposing (Tool)
@@ -226,6 +226,9 @@ update msg model =
                     ( model, Cmd.none, False )
 
                 Visual.ConstructionCrosshair constructionPoint ->
+                    ( model, Cmd.none, False )
+
+                Visual.Text _ _ _ _ ->
                     ( model, Cmd.none, False )
 
         ToolMsg toolMsg ->

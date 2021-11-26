@@ -62,11 +62,14 @@ type alias ReferenceFrame =
     , p2 : Point
     , value : Float
     , unit : String
+    , ratio : Float
     }
+
 
 type Dimension
     = DistanceDimension Point Point
     | AngleDimension Point Point Point
+
 
 chainUpdate : (model -> ( model, Cmd msg )) -> ( model, Cmd msg ) -> ( model, Cmd msg )
 chainUpdate toNew ( model, cmd ) =
@@ -76,6 +79,7 @@ chainUpdate toNew ( model, cmd ) =
     in
     ( newModel, Cmd.batch [ cmd, newCmd ] )
 
+
 chainUpdate3 : (model -> ( model, Cmd msg, Bool )) -> ( model, Cmd msg, Bool ) -> ( model, Cmd msg, Bool )
 chainUpdate3 toNew ( model, cmd, updateTimeline ) =
     let
@@ -83,7 +87,6 @@ chainUpdate3 toNew ( model, cmd, updateTimeline ) =
             toNew model
     in
     ( newModel, Cmd.batch [ cmd, newCmd ], updateTimeline || newUpdateTimeline )
-
 
 
 {-| Svg helper for converting points into SVG coordinate strings (like: M 5,5)

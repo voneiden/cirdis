@@ -1,11 +1,12 @@
 module Visual exposing (..)
 
-import Common exposing (Dimension(..), Point, Radius, Thickness, Width, fromPoint, toPairs)
+import Common exposing (Dimension(..), Point, Radius, ReferenceFrame, Thickness, Width, fromPoint, toPairs)
 import Conductor exposing (Conductor(..), ConstructionPoint(..), Net(..), SurfaceConductor(..), ThroughConductor(..), TracePoint, conductorNet, constructionPointA, constructionPointPoint, surfaceConductorNet)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
 import Svg.Events as SvgE
 import Svg.Lazy
+import Vector
 
 
 type VisualElement
@@ -19,6 +20,7 @@ type VisualElement
     | ConstructionLine Point Point Thickness
     | ConstructionSegment (List (ConstructionPoint Thickness))
     | ConstructionCrosshair (ConstructionPoint Thickness)
+    | Text Point String Int Float
 
 
 type Msg
@@ -56,6 +58,9 @@ elementConductor element =
             Nothing
 
         ConstructionCrosshair _ ->
+            Nothing
+
+        Text _ _ _ _ ->
             Nothing
 
 
@@ -175,6 +180,19 @@ viewVisualElement model element =
                     []
                 ]
 
+        Text point string size rotation ->
+            Svg.text_
+                [ SvgA.x <| String.fromFloat point.x
+                , SvgA.y <| String.fromFloat point.y
+                , SvgA.dominantBaseline "middle"
+                , SvgA.textAnchor "middle"
+                , SvgA.pointerEvents "none"
+                , SvgA.fontSize <| String.fromInt size ++ "px"
+                , SvgA.fill "red"
+                , SvgA.style <| "transform-box: fill-box;transform-origin: center;transform:rotate(" ++ String.fromFloat rotation ++ "rad)"
+                ]
+                [ Svg.text string ]
+
 
 viewCircle : Point -> Radius -> List (Svg.Attribute Msg) -> Maybe ( String, String ) -> Svg Msg
 viewCircle point radius attrs maybeText =
@@ -287,12 +305,13 @@ throughConductorToVisualElement throughConductor =
 
 viewLazyThroughConductors : ModelVisuals a -> List ThroughConductor -> Svg Msg
 viewLazyThroughConductors appearance throughConductors =
-    Svg.Lazy.lazy3
-        (\highlightNets select tc ->
-            viewThroughConductors { highlightNets = highlightNets, select = select } tc
+    Svg.Lazy.lazy4
+        (\_ _ _ tc ->
+            viewThroughConductors appearance tc
         )
         appearance.highlightNets
         appearance.select
+        appearance.ref
         throughConductors
 
 
@@ -347,7 +366,7 @@ traceToVisualElements hidden c tracePoints =
 
 
 type alias ModelVisuals a =
-    { a | highlightNets : List Net, select : List VisualElement }
+    { a | highlightNets : List Net, select : List VisualElement, ref : Maybe ReferenceFrame }
 
 
 deriveColor : ModelVisuals a -> VisualElement -> String
@@ -427,10 +446,53 @@ viewDimension : ModelVisuals a -> Dimension -> Svg Msg
 viewDimension model dimension =
     case dimension of
         DistanceDimension p1 p2 ->
+            let
+                v =
+                    Vector.sub p2 p1
+
+                l =
+                    Vector.len v
+
+                u =
+                    Vector.unit v l
+
+                middle =
+                    Vector.mul u (l / 2)
+
+                offset =
+                    Vector.mul (Vector.rot90ccw u) 30
+
+                textRotation =
+                    atan2 v.y v.x
+
+                textPosition =
+                    Vector.sum p1 (Vector.sum middle offset)
+
+                referenceLength =
+                    case model.ref of
+                        Just ref ->
+                            let
+                                refLen =
+                                    l * ref.ratio
+
+                                roughlyRounded =
+                                    (refLen
+                                        * 100
+                                        |> round
+                                        |> toFloat
+                                    )
+                                        / 100
+                            in
+                            (String.fromFloat <| roughlyRounded) ++ " " ++ ref.unit
+
+                        Nothing ->
+                            "?"
+            in
             Svg.g []
                 [ viewVisualElement model (ConstructionCircle p1 5 Nothing)
                 , viewVisualElement model (ConstructionLine p1 p2 1)
                 , viewVisualElement model (ConstructionCircle p2 5 Nothing)
+                , viewVisualElement model (Text textPosition referenceLength 20 textRotation)
                 ]
 
         AngleDimension p1 p2 p3 ->

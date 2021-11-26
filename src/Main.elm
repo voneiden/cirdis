@@ -21,6 +21,7 @@ import Svg.Events as SvgE
 import Svg.Lazy as Svg
 import Task
 import Tool
+import Vector
 import Visual exposing (viewDimensions)
 import Workspace
 
@@ -542,11 +543,18 @@ doUpdate msg model =
                     let
                         workspace =
                             model.timeline.current
+
+                        unit =
+                            if refForm.inputUnit == "" then
+                                "mm"
+
+                            else
+                                refForm.inputUnit
                     in
                     ( addTimelineEntry
                         { workspace
                             | form = Form.NoForm
-                            , ref = Just { p1 = refForm.p1, p2 = refForm.p2, value = distance, unit = refForm.inputUnit }
+                            , ref = Just { p1 = refForm.p1, p2 = refForm.p2, value = distance, unit = unit, ratio = distance / Vector.len (Vector.sub refForm.p1 refForm.p2) }
                             , tool = Tool.CreateDistanceDimension Nothing
                         }
                         model
