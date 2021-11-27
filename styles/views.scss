@@ -66,13 +66,15 @@ button {
 }
 
 .import-layer {
-
-
   margin-top: 25px;
-  margin-bottom: 50px;
+  margin-bottom: 25px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.project-actions {
+  margin-bottom: 50px;
 }
 
 #key-row-0,

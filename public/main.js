@@ -98,8 +98,12 @@ cirdis.ports.canvasSize.subscribe(() => {
 
 // Keydown event handling
 let keyDownPreventDefault = true
-cirdis.ports.keyDownPreventDefault.subscribe(() => { keyDownPreventDefault = true } )
-cirdis.ports.keyDownAllowDefault.subscribe(() => { keyDownPreventDefault = false } )
+cirdis.ports.keyDownPreventDefault.subscribe(() => {
+  keyDownPreventDefault = true
+})
+cirdis.ports.keyDownAllowDefault.subscribe(() => {
+  keyDownPreventDefault = false
+})
 
 const ignoreKeyCodes = [116]
 const ignoreCtrlKeyCodes = [82, 48]
@@ -173,3 +177,10 @@ function forceMount() {
 }
 
 window.requestAnimationFrame(forceMount)
+
+
+// Project save
+cirdis.ports.saveProject.subscribe(() => {
+  const canvas = document.getElementById("canvas")
+  cirdis.ports.downloadProject.send(canvas.outerHTML)
+})

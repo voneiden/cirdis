@@ -8,13 +8,16 @@ import Bytes exposing (Bytes)
 import Common exposing (Point, chainUpdate)
 import Dict exposing (Dict)
 import File exposing (File)
+import File.Download
 import File.Select as Select
 import Form
 import Html exposing (Attribute, Html, button, div, h5, input, p, span, text)
 import Html.Attributes exposing (class, disabled, id, placeholder, value)
 import Html.Events exposing (onBlur, onClick, onFocus, onInput, onMouseEnter, onMouseLeave)
 import Html.Lazy exposing (lazy)
+import Io exposing (BoundingClientRect, LayerData, MainModel, MousePosition, WorkspaceTimeline, encodeMainModel, encodedSvgModel)
 import Json.Decode as Decode exposing (Decoder)
+import Json.Encode as Encode
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
 import Svg.Events as SvgE
@@ -22,6 +25,7 @@ import Svg.Lazy as Svg
 import Task
 import Tool
 import Vector
+import VirtualDom
 import Visual exposing (viewDimensions)
 import Workspace
 
@@ -41,25 +45,7 @@ main =
 
 
 type alias Model =
-    { layers : Dict Int LayerData
-    , dragging : Bool
-    , shift : Bool
-    , ctrl : Bool
-    , lastMousePosition : MousePosition
-    , canvasBoundingClientRect : BoundingClientRect
-    , timeline : WorkspaceTimeline
-    , keyDownPreventDefault : Bool
-    , zPressed : Bool
-    , xPressed : Bool
-    , vPressed : Bool
-    }
-
-
-type alias LayerData =
-    { title : String
-    , mimeType : String
-    , b64Data : String
-    }
+    MainModel
 
 
 type alias ExternalLayer =
@@ -84,14 +70,6 @@ toExternalLayer model wsLayer =
         Dict.get wsLayer.id model.layers
 
 
-type alias MousePosition =
-    { timeStamp : Float
-    , offsetX : Float
-    , offsetY : Float
-    , button : Int
-    }
-
-
 mousePositionToPoint : BoundingClientRect -> Workspace.Transform -> MousePosition -> Point
 mousePositionToPoint b t mousePosition =
     let
@@ -104,25 +82,9 @@ mousePositionToPoint b t mousePosition =
     { x = t.x + deltaX * t.z, y = t.y + deltaY * t.z }
 
 
-type alias BoundingClientRect =
-    { x : Float
-    , y : Float
-    , width : Float
-    , height : Float
-    , top : Float
-    }
-
-
 {-| Timeline for implementing redo/undo.
 TODO: Would be neat to have decent branching here?
 -}
-type alias WorkspaceTimeline =
-    { current : Workspace.Model
-    , past : List Workspace.Model
-    , future : List Workspace.Model
-    }
-
-
 defaultWorkspaceTimeline : WorkspaceTimeline
 defaultWorkspaceTimeline =
     { current = Workspace.defaultModel
@@ -168,6 +130,7 @@ init _ =
       , zPressed = False
       , xPressed = False
       , vPressed = False
+      , includeSource = False
       }
     , canvasSize ()
     )
@@ -201,6 +164,9 @@ type Msg
     | FormWelcomeImportProject
     | FormRefApply Form.RefFormData
     | FormRefClear
+    | SaveProject
+    | DownloadProject String
+    | LoadProject
 
 
 type alias FileInfo =
@@ -579,6 +545,15 @@ doUpdate msg model =
             , Cmd.none
             )
 
+        SaveProject ->
+            ( { model | includeSource = True }, saveProject () )
+
+        LoadProject ->
+            ( model, Cmd.none )
+
+        DownloadProject string ->
+            ( { model | includeSource = False }, File.Download.string "cirdis-project.svg" "image/svg+xml" string )
+
 
 undo : Model -> ( Model, Cmd Msg )
 undo model =
@@ -650,13 +625,24 @@ view model =
                                 [ SvgA.id "canvas"
                                 , SvgE.preventDefaultOn "mousedown" (Decode.map (\msg -> ( msg, True )) (Decode.map MouseDown decodeMousePosition))
                                 , SvgA.viewBox <| transformToViewBox model.canvasBoundingClientRect model.timeline.current.transform
-                                , SvgA.preserveAspectRatio "slice"
+
+                                --, SvgA.preserveAspectRatio "slice"
                                 , SvgA.class <| "tool-" ++ Tool.toolToString model.timeline.current.tool
+                                , VirtualDom.attribute "xmlns" "http://www.w3.org/2000/svg"
+                                , VirtualDom.attribute "xmlns:xlink" "http://www.w3.org/1999/xlink"
+
+                                --
                                 ]
                                 --[ Maybe.withDefault (text "") <| Maybe.map (viewLayer model) <| List.head model.timeline.current.layers
                                 --]
                                 ([ Svg.g [ SvgA.id "cirdis-layers-mountpoint" ] [] ]
                                     ++ viewWorkspace model
+                                    ++ (if model.includeSource then
+                                            [ encodedSvgModel model ]
+
+                                        else
+                                            []
+                                       )
                                 )
                             ]
                         ]
@@ -879,6 +865,7 @@ sidebar model =
     div [ id "sidebar" ]
         [ viewLayerList model.timeline.current.layers model.layers
         , viewLayerSelect
+        , viewProjectActions
         , sidebarKeyRow0 model.timeline.current
         , div [ id "key-row-1" ]
             [ button
@@ -1082,6 +1069,14 @@ viewLayerSelect =
         ]
 
 
+viewProjectActions : Html Msg
+viewProjectActions =
+    div [ class "project-actions" ]
+        [ button [ onClick <| SaveProject ] [ text <| "Save project" ]
+        , button [ onClick <| LoadProject ] [ text <| "Load project" ]
+        ]
+
+
 viewInfo : Model -> Html Msg
 viewInfo model =
     let
@@ -1269,6 +1264,7 @@ subscriptions _ =
         , onKeyUp (decodeKey |> Decode.map KeyUp)
         , onMouseUp (Decode.map MouseUp decodeMousePosition)
         , keyDown KeyDown
+        , downloadProject DownloadProject
         ]
 
 
@@ -1313,6 +1309,12 @@ port keyDownPreventDefault : () -> Cmd msg
 
 
 port keyDownAllowDefault : () -> Cmd msg
+
+
+port saveProject : () -> Cmd msg
+
+
+port downloadProject : (String -> msg) -> Sub msg
 
 
 type alias ImageInformation =
