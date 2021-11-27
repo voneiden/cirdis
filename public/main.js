@@ -179,8 +179,35 @@ function forceMount() {
 window.requestAnimationFrame(forceMount)
 
 
-// Project save
+/* Project save
+ * Grab the canvas outerHTML and hand it as string back to Elm
+ */
 cirdis.ports.saveProject.subscribe(() => {
   const canvas = document.getElementById("canvas")
   cirdis.ports.downloadProject.send(canvas.outerHTML)
+})
+
+
+/* Project load
+ * Grab the string which is hopefully valid SVG and jam it into a node. Then grab relevant data from the node
+ * and pass it back to Elm
+ */
+cirdis.ports.loadSvg.subscribe((svgData) => {
+  try {
+    const parent = document.createElement('div')
+    parent.innerHTML = svgData
+    const layerDataElements = parent.querySelectorAll('[id^=\'layer-\']')
+    // Not terribly robust, eh
+    const layerData = Array.from(layerDataElements).map((lde) => [parseInt(lde.id.slice(6)), lde.href.baseVal.split(',')[1]])
+    const data = parent.querySelector('#cirdis-src')?.dataset?.cirdisSrc
+
+    if (data) {
+      cirdis.ports.loadProjectSuccess.send({data: data, layerData: layerData})
+      return
+    }
+  } catch (e) {
+    // This should "never" happen :-D
+    console.error("Uncaught exception", e)
+  }
+  cirdis.ports.loadProjectFailure.send(null)
 })

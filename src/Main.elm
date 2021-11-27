@@ -15,7 +15,7 @@ import Html exposing (Attribute, Html, button, div, h5, input, p, span, text)
 import Html.Attributes exposing (class, disabled, id, placeholder, value)
 import Html.Events exposing (onBlur, onClick, onFocus, onInput, onMouseEnter, onMouseLeave)
 import Html.Lazy exposing (lazy)
-import Io exposing (BoundingClientRect, LayerData, MainModel, MousePosition, WorkspaceTimeline, encodeMainModel, encodedSvgModel)
+import Io exposing (BoundingClientRect, LayerData, MainModel, MousePosition, WorkspaceTimeline, decodeMainModel, defaultWorkspaceTimeline, encodeMainModel, encodedSvgModel)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 import Svg exposing (Svg)
@@ -85,14 +85,6 @@ mousePositionToPoint b t mousePosition =
 {-| Timeline for implementing redo/undo.
 TODO: Would be neat to have decent branching here?
 -}
-defaultWorkspaceTimeline : WorkspaceTimeline
-defaultWorkspaceTimeline =
-    { current = Workspace.defaultModel
-    , past = []
-    , future = []
-    }
-
-
 addTimelineEntry : Workspace.Model -> Model -> Model
 addTimelineEntry next model =
     let
@@ -166,7 +158,11 @@ type Msg
     | FormRefClear
     | SaveProject
     | DownloadProject String
-    | LoadProject
+    | GetLoadProject
+    | GotLoadProject File
+    | GotLoadProjectData String
+    | LoadProjectSuccess ProjectData
+    | LoadProjectFailure ()
 
 
 type alias FileInfo =
@@ -242,7 +238,8 @@ doUpdate msg model =
 
                         layerDefinition : LayerData
                         layerDefinition =
-                            { title = fileInfo.name
+                            { id = layerId
+                            , title = fileInfo.name
                             , mimeType = fileInfo.mime
                             , b64Data = b64
                             }
@@ -501,7 +498,7 @@ doUpdate msg model =
                 workspace =
                     model.timeline.current
             in
-            doUpdate GetLayerImage (addTimelineEntry { workspace | form = Form.NoForm } model)
+            doUpdate GetLoadProject (addTimelineEntry { workspace | form = Form.NoForm } model)
 
         FormRefApply refForm ->
             case String.toFloat refForm.inputDistance of
@@ -548,11 +545,32 @@ doUpdate msg model =
         SaveProject ->
             ( { model | includeSource = True }, saveProject () )
 
-        LoadProject ->
-            ( model, Cmd.none )
+        GetLoadProject ->
+            ( model
+            , Select.file [ "image/svg+xml" ] GotLoadProject
+            )
 
         DownloadProject string ->
             ( { model | includeSource = False }, File.Download.string "cirdis-project.svg" "image/svg+xml" string )
+
+        GotLoadProject file ->
+            ( model, Task.perform GotLoadProjectData <| File.toString file )
+
+        GotLoadProjectData data ->
+            ( model, loadSvg data )
+
+        LoadProjectSuccess projectData ->
+            case Decode.decodeString (decodeMainModel model projectData.layerData) projectData.data of
+                Ok newModel ->
+                    ( newModel, setLayers ( List.filterMap (toExternalLayer newModel) newModel.timeline.current.layers, True ) )
+
+                Err error ->
+                    -- TODO show error form
+                    ( model, Cmd.none )
+
+        LoadProjectFailure () ->
+            -- TODO show error form
+            ( model, Cmd.none )
 
 
 undo : Model -> ( Model, Cmd Msg )
@@ -1073,7 +1091,7 @@ viewProjectActions : Html Msg
 viewProjectActions =
     div [ class "project-actions" ]
         [ button [ onClick <| SaveProject ] [ text <| "Save project" ]
-        , button [ onClick <| LoadProject ] [ text <| "Load project" ]
+        , button [ onClick <| GetLoadProject ] [ text <| "Load project" ]
         ]
 
 
@@ -1265,6 +1283,8 @@ subscriptions _ =
         , onMouseUp (Decode.map MouseUp decodeMousePosition)
         , keyDown KeyDown
         , downloadProject DownloadProject
+        , loadProjectSuccess LoadProjectSuccess
+        , loadProjectFailure LoadProjectFailure
         ]
 
 
@@ -1315,6 +1335,21 @@ port saveProject : () -> Cmd msg
 
 
 port downloadProject : (String -> msg) -> Sub msg
+
+
+port loadSvg : String -> Cmd msg
+
+
+type alias ProjectData =
+    { data : String
+    , layerData : List ( Int, String )
+    }
+
+
+port loadProjectSuccess : (ProjectData -> msg) -> Sub msg
+
+
+port loadProjectFailure : (() -> msg) -> Sub msg
 
 
 type alias ImageInformation =
