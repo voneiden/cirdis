@@ -10,7 +10,7 @@ import Vector
 
 
 type VisualElement
-    = Circle Conductor Point Radius
+    = Circle Conductor Point Radius (Maybe String)
     | ConstructionCircle Point Radius (Maybe String)
     | Square Conductor Point Width (Maybe String)
     | SquareOutline Conductor Point Width (Maybe String)
@@ -30,7 +30,7 @@ type Msg
 elementConductor : VisualElement -> Maybe Conductor
 elementConductor element =
     case element of
-        Circle conductor _ _ ->
+        Circle conductor _ _ _ ->
             Just conductor
 
         ConstructionCircle _ _ _ ->
@@ -67,14 +67,18 @@ elementConductor element =
 viewVisualElement : ModelVisuals a -> VisualElement -> Svg Msg
 viewVisualElement model element =
     case element of
-        Circle _ point radius ->
+        Circle _ point radius maybeText ->
+            let
+                color =
+                    deriveColor model element
+            in
             viewCircle point
                 radius
-                [ SvgA.fill (deriveColor model element)
+                [ SvgA.fill color
                 , SvgE.onClick (Click element)
                 , SvgA.class "clickable"
                 ]
-                Nothing
+                (Maybe.map (\t -> ( t, "white" )) maybeText)
 
         ConstructionCircle point radius maybeText ->
             let
@@ -93,7 +97,7 @@ viewVisualElement model element =
                 width
                 [ SvgA.fill <| deriveColor model element
                 ]
-                Nothing
+                (Maybe.map (\t -> ( t, "white" )) maybeText)
 
         SquareOutline _ point width maybeText ->
             viewSquare point
@@ -206,7 +210,7 @@ viewCircle point radius attrs maybeText =
                         , SvgA.dominantBaseline "middle"
                         , SvgA.textAnchor "middle"
                         , SvgA.pointerEvents "none"
-                        , SvgA.fontSize <| String.fromFloat (radius * 2) ++ "px"
+                        , SvgA.fontSize <| String.fromFloat (radius * 1.5) ++ "px"
                         , SvgA.fill color
                         ]
                         [ Svg.text text ]
@@ -243,7 +247,7 @@ viewSquare point width attrs maybeText =
                         , SvgA.dominantBaseline "middle"
                         , SvgA.textAnchor "middle"
                         , SvgA.pointerEvents "none"
-                        , SvgA.fontSize <| String.fromFloat width ++ "px"
+                        , SvgA.fontSize <| String.fromFloat (width * 0.75) ++ "px"
                         , SvgA.fill color
                         ]
                         [ Svg.text text ]
@@ -300,7 +304,7 @@ throughConductorToVisualElement throughConductor =
     case throughConductor of
         ThroughPad pad point radius _ ->
             -- todo pad
-            [ Circle (Through throughConductor) point radius ]
+            [ Circle (Through throughConductor) point radius (Maybe.map String.fromInt pad.number) ]
 
 
 viewLazyThroughConductors : ModelVisuals a -> List ThroughConductor -> Svg Msg

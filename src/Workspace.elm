@@ -197,7 +197,7 @@ update msg model =
 
         VisualElementMsg (Visual.Click element) ->
             case element of
-                Visual.Circle conductor point radius ->
+                Visual.Circle conductor point radius _ ->
                     ( model, Cmd.none, True )
 
                 -- TODO
