@@ -1128,10 +1128,10 @@ viewInfo model =
                                 text "Place pin 1"
 
                             ( Just _, Nothing ) ->
-                                text "Place pin 2"
+                                text "Place opposite pin"
 
                             _ ->
-                                text "Place pin 3"
+                                text "Place pin next to opposite pin"
 
                     Tool.CreateRowSurfacePad _ mp1 mp2 ->
                         case ( mp1, mp2 ) of
@@ -1139,10 +1139,10 @@ viewInfo model =
                                 text "Place 1st pin"
 
                             ( Just _, Nothing ) ->
-                                text "Place 2nd pin"
+                                text "Place last pin"
 
                             _ ->
-                                text "Place last pin"
+                                text "Place 2nd last pin"
 
                     Tool.CreateNumberedThroughPad pinNumber ->
                         text <| "Place pin " ++ String.fromInt pinNumber
@@ -1153,10 +1153,10 @@ viewInfo model =
                                 text "Place pin 1"
 
                             ( Just _, Nothing ) ->
-                                text "Place pin 2"
+                                text "Place opposite pin"
 
                             _ ->
-                                text "Place pin 3"
+                                text "Place pin next to opposite pin"
 
                     Tool.CreateRowThroughPad _ mp1 mp2 ->
                         case ( mp1, mp2 ) of
@@ -1164,10 +1164,10 @@ viewInfo model =
                                 text "Place 1st pin"
 
                             ( Just _, Nothing ) ->
-                                text "Place 2nd pin"
+                                text "Place last pin"
 
                             _ ->
-                                text "Place last pin"
+                                text "Place 2nd last pin"
 
                     Tool.DefineReferenceFrame mp1 mp2 ->
                         let

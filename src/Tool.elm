@@ -233,7 +233,7 @@ update toMsg msg model =
                         ( Just p1, Just p2 ) ->
                             let
                                 shape =
-                                    generateDoubleRow p1 p2 model.cursor
+                                    generateDoubleRow (model.radius * 2) p1 p2 model.cursor
                             in
                             ( List.foldl
                                 (\( shapePoint, shapePad ) m ->
@@ -256,7 +256,7 @@ update toMsg msg model =
                         ( Just p1, Just p2 ) ->
                             let
                                 shape =
-                                    generateSingleRow startNumber p1 p2 model.cursor
+                                    generateSingleRow startNumber (model.radius * 2) p1 p2 model.cursor
 
                                 lastPinNumber =
                                     shape
@@ -297,7 +297,7 @@ update toMsg msg model =
                         ( Just p1, Just p2 ) ->
                             let
                                 shape =
-                                    generateDoubleRow p1 p2 model.cursor
+                                    generateDoubleRow (model.radius * 2) p1 p2 model.cursor
                             in
                             ( List.foldl
                                 (\( shapePoint, shapePad ) m ->
@@ -320,7 +320,7 @@ update toMsg msg model =
                         ( Just p1, Just p2 ) ->
                             let
                                 shape =
-                                    generateSingleRow startNumber p1 p2 model.cursor
+                                    generateSingleRow startNumber (model.radius * 2) p1 p2 model.cursor
 
                                 lastPinNumber =
                                     shape
@@ -731,13 +731,13 @@ viewRowTool model startNumber mp1 mp2 size toVisual =
         ( Just p1, Nothing ) ->
             Svg.g []
                 [ viewVisualElement model (toVisual p1 size (Just <| String.fromInt startNumber))
-                , viewVisualElement model (toVisual model.cursor size (Just <| String.fromInt (startNumber + 1)))
+                , viewVisualElement model (toVisual model.cursor size (Just <| "?"))
                 ]
 
         ( Just p1, Just p2 ) ->
             let
                 shape =
-                    generateSingleRow startNumber p1 p2 model.cursor
+                    generateSingleRow startNumber (model.radius * 2) p1 p2 model.cursor
             in
             Svg.g [] <|
                 List.map (\( point, pad ) -> viewVisualElement model (toVisual point size (Maybe.map String.fromInt pad.number))) shape
@@ -759,7 +759,7 @@ viewDoubleRowTool model mp1 mp2 size toVisual =
         ( Just p1, Just p2 ) ->
             let
                 shape =
-                    generateDoubleRow p1 p2 model.cursor
+                    generateDoubleRow (model.radius * 2) p1 p2 model.cursor
             in
             Svg.g [] <|
                 List.map (\( point, pad ) -> viewVisualElement model (toVisual point size (Maybe.map String.fromInt pad.number))) shape
