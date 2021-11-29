@@ -307,38 +307,44 @@ updateConductorNet net conductor model =
 
 updateSurfaceConductorNet : Net -> SurfaceConductor -> ModelConductors a b -> ModelConductors a b
 updateSurfaceConductorNet net surfaceConductor model =
-    case model.layers of
-        layer :: others ->
-            let
-                updatedSurfaceConductor =
-                    case surfaceConductor of
-                        Trace tracePoints _ ->
-                            Trace tracePoints net
+    let
+        hasConductor layer =
+            List.member surfaceConductor layer.conductors
 
-                        SurfacePad pad point width _ ->
-                            SurfacePad pad point width net
+        updateLayer layer =
+            if hasConductor layer then
+                let
+                    updatedSurfaceConductor =
+                        case surfaceConductor of
+                            Trace tracePoints _ ->
+                                Trace tracePoints net
 
-                        Zone points _ ->
-                            Zone points net
+                            SurfacePad pad point width _ ->
+                                SurfacePad pad point width net
 
-                updatedConductors =
-                    List.map
-                        (\c ->
-                            if c == surfaceConductor then
-                                updatedSurfaceConductor
+                            Zone points _ ->
+                                Zone points net
 
-                            else
-                                c
-                        )
-                        layer.conductors
+                    updatedConductors =
+                        List.map
+                            (\c ->
+                                if c == surfaceConductor then
+                                    updatedSurfaceConductor
 
-                updatedLayer =
-                    { layer | conductors = updatedConductors }
-            in
-            { model | layers = updatedLayer :: others }
+                                else
+                                    c
+                            )
+                            layer.conductors
+                in
+                { layer | conductors = updatedConductors }
 
-        _ ->
-            model
+            else
+                layer
+    in
+    { model
+        | layers =
+            List.map updateLayer model.layers
+    }
 
 
 
