@@ -1,7 +1,28 @@
 module Tool exposing (..)
 
 import Common exposing (Dimension(..), Point, Radius, ReferenceFrame, Thickness, chainUpdate3)
-import Conductor exposing (Conductor, ConstructionPoint(..), MergeNet(..), ModelConductors, Net(..), SurfaceConductor(..), ThroughConductor(..), activeLayerSurfaceConductors, addSurfaceConductor, addSurfaceConductorNoNet, addThroughConductor, constructionPointPoint, constructionPointsToConductors, constructionPointsToTrace, createTraceToHighlightNets, incrementNextNetId, mergeNets, snapTo, updateConductorNet)
+import Conductor
+    exposing
+        ( Conductor
+        , ConstructionPoint(..)
+        , MergeNet(..)
+        , ModelConductors
+        , Net(..)
+        , SurfaceConductor(..)
+        , ThroughConductor(..)
+        , activeLayerSurfaceConductors
+        , addSurfaceConductor
+        , addSurfaceConductorNoNet
+        , addThroughConductor
+        , constructionPointPoint
+        , constructionPointsToConductors
+        , constructionPointsToTrace
+        , createTraceToHighlightNets
+        , incrementNextNetId
+        , mergeNets
+        , snapTo
+        , updateConductorNet
+        )
 import Form
 import Svg exposing (Svg)
 import Vector exposing (generateDoubleRow, generateSingleRow)
