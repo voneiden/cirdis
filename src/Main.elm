@@ -158,6 +158,7 @@ type Msg
     | FormRefClear
     | SaveProject
     | DownloadProject String
+    | DownloadProjectFailure ()
     | GetLoadProject
     | GotLoadProject File
     | GotLoadProjectData String
@@ -569,6 +570,10 @@ doUpdate msg model =
                     ( model, Cmd.none )
 
         LoadProjectFailure () ->
+            -- TODO show error form
+            ( model, Cmd.none )
+
+        DownloadProjectFailure () ->
             -- TODO show error form
             ( model, Cmd.none )
 
@@ -1335,6 +1340,9 @@ port saveProject : () -> Cmd msg
 
 
 port downloadProject : (String -> msg) -> Sub msg
+
+
+port downloadProjectFailure : (() -> msg) -> Sub msg
 
 
 port loadSvg : String -> Cmd msg

@@ -182,9 +182,20 @@ window.requestAnimationFrame(forceMount)
 /* Project save
  * Grab the canvas outerHTML and hand it as string back to Elm
  */
-cirdis.ports.saveProject.subscribe(() => {
+const saveProject = function saveProject(retryCount = 0) {
   const canvas = document.getElementById("canvas")
+  if (!canvas.getElementById('cirdis-src')) {
+    if (retryCount < 10) {
+      return window.requestAnimationFrame(() => saveProject(retryCount + 1))
+    } else {
+      return cirdis.ports.downloadProjectFailure.send(null)
+    }
+
+  }
   cirdis.ports.downloadProject.send(canvas.outerHTML)
+}
+cirdis.ports.saveProject.subscribe(() => {
+  saveProject()
 })
 
 
@@ -204,6 +215,8 @@ cirdis.ports.loadSvg.subscribe((svgData) => {
     if (data) {
       cirdis.ports.loadProjectSuccess.send({data: data, layerData: layerData})
       return
+    } else {
+      console.error("Got no data!", parent, data, data?.dataset)
     }
   } catch (e) {
     // This should "never" happen :-D
