@@ -45,6 +45,19 @@ type alias Point =
     }
 
 
+type TwoPoints
+    = NoneOfTwo
+    | OneOfTwo Point
+    | TwoOfTwo Point Point
+
+
+type ThreePoints
+    = NoneOfThree
+    | OneOfThree Point
+    | TwoOfThree Point Point
+    | ThreeOfThree Point Point Point
+
+
 type alias Pad =
     { number : Maybe Int
     , label : Maybe PadLabel

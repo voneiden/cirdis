@@ -5,7 +5,7 @@ import Browser exposing (Document)
 import Browser.Dom as Dom
 import Browser.Events exposing (onKeyUp, onMouseUp)
 import Bytes exposing (Bytes)
-import Common exposing (Point, chainUpdate)
+import Common exposing (Point, ThreePoints(..), TwoPoints(..), chainUpdate)
 import Dict exposing (Dict)
 import File exposing (File)
 import File.Download
@@ -693,10 +693,10 @@ sidebarKeyRow0 wsModel =
         Tool.CreateNumberedSurfacePad _ ->
             surfacePadSubTools tool
 
-        Tool.CreateSoicSurfacePad _ _ ->
+        Tool.CreateSoicSurfacePad _ ->
             surfacePadSubTools tool
 
-        Tool.CreateRowSurfacePad _ _ _ ->
+        Tool.CreateRowSurfacePad _ _ ->
             surfacePadSubTools tool
 
         Tool.CreateThroughPadTool ->
@@ -705,10 +705,10 @@ sidebarKeyRow0 wsModel =
         Tool.CreateNumberedThroughPad _ ->
             throughPadSubTools tool
 
-        Tool.CreateDipThroughPad _ _ ->
+        Tool.CreateDipThroughPad _ ->
             throughPadSubTools tool
 
-        Tool.CreateRowThroughPad _ _ _ ->
+        Tool.CreateRowThroughPad _ _ ->
             throughPadSubTools tool
 
         Tool.DefineReferenceFrame _ _ ->
@@ -750,10 +750,10 @@ toolAttrsAndText ( tool, active ) index =
         Tool.CreateNumberedSurfacePad pinNumber ->
             ( [ activeAttr, clickAttr ], span [ class "bordered" ] [ text <| String.fromInt pinNumber ] )
 
-        Tool.CreateSoicSurfacePad _ _ ->
+        Tool.CreateSoicSurfacePad _ ->
             ( [ activeAttr, clickAttr ], text "SOIC" )
 
-        Tool.CreateRowSurfacePad _ _ _ ->
+        Tool.CreateRowSurfacePad _ _ ->
             ( [ activeAttr, clickAttr ], text "Row" )
 
         Tool.CreateThroughPadTool ->
@@ -762,10 +762,10 @@ toolAttrsAndText ( tool, active ) index =
         Tool.CreateNumberedThroughPad pinNumber ->
             ( [ activeAttr, clickAttr ], span [ class "circled" ] [ text <| String.fromInt pinNumber ] )
 
-        Tool.CreateDipThroughPad _ _ ->
+        Tool.CreateDipThroughPad _ ->
             ( [ activeAttr, clickAttr ], text "DIP" )
 
-        Tool.CreateRowThroughPad _ _ _ ->
+        Tool.CreateRowThroughPad _ _ ->
             ( [ activeAttr, clickAttr ], text "Row" )
 
         Tool.CreateZoneTool ->
@@ -800,10 +800,10 @@ surfacePadSubTools tool =
             toolAttrsAndText (pickTool (Tool.CreateNumberedSurfacePad 1) tool) 2
 
         ( b3Attrs, b3Text ) =
-            toolAttrsAndText (pickTool (Tool.CreateSoicSurfacePad Nothing Nothing) tool) 3
+            toolAttrsAndText (pickTool (Tool.CreateSoicSurfacePad NoneOfThree) tool) 3
 
         ( b4Attrs, b4Text ) =
-            toolAttrsAndText (pickTool (Tool.CreateRowSurfacePad 1 Nothing Nothing) tool) 4
+            toolAttrsAndText (pickTool (Tool.CreateRowSurfacePad 1 NoneOfTwo) tool) 4
     in
     div [ id "key-row-0" ]
         [ button b1Attrs [ b1Text, span [ class "keycode" ] [ text "1" ] ]
@@ -823,10 +823,10 @@ throughPadSubTools tool =
             toolAttrsAndText (pickTool (Tool.CreateNumberedThroughPad 1) tool) 2
 
         ( b3Attrs, b3Text ) =
-            toolAttrsAndText (pickTool (Tool.CreateDipThroughPad Nothing Nothing) tool) 3
+            toolAttrsAndText (pickTool (Tool.CreateDipThroughPad NoneOfThree) tool) 3
 
         ( b4Attrs, b4Text ) =
-            toolAttrsAndText (pickTool (Tool.CreateRowThroughPad 1 Nothing Nothing) tool) 4
+            toolAttrsAndText (pickTool (Tool.CreateRowThroughPad 1 NoneOfTwo) tool) 4
     in
     div [ id "key-row-0" ]
         [ button b1Attrs [ b1Text, span [ class "keycode" ] [ text "1" ] ]
@@ -950,10 +950,10 @@ activeTool model tool =
         ( Tool.CreateNumberedSurfacePad _, Tool.CreateSurfacePadTool ) ->
             True
 
-        ( Tool.CreateSoicSurfacePad _ _, Tool.CreateSurfacePadTool ) ->
+        ( Tool.CreateSoicSurfacePad _, Tool.CreateSurfacePadTool ) ->
             True
 
-        ( Tool.CreateRowSurfacePad _ _ _, Tool.CreateSurfacePadTool ) ->
+        ( Tool.CreateRowSurfacePad _ _, Tool.CreateSurfacePadTool ) ->
             True
 
         ( Tool.CreateThroughPadTool, Tool.CreateThroughPadTool ) ->
@@ -962,10 +962,10 @@ activeTool model tool =
         ( Tool.CreateNumberedThroughPad _, Tool.CreateThroughPadTool ) ->
             True
 
-        ( Tool.CreateDipThroughPad _ _, Tool.CreateThroughPadTool ) ->
+        ( Tool.CreateDipThroughPad _, Tool.CreateThroughPadTool ) ->
             True
 
-        ( Tool.CreateRowThroughPad _ _ _, Tool.CreateThroughPadTool ) ->
+        ( Tool.CreateRowThroughPad _ _, Tool.CreateThroughPadTool ) ->
             True
 
         ( Tool.CreateTraceTool _, Tool.CreateTraceTool _ ) ->
@@ -1127,52 +1127,58 @@ viewInfo model =
                     Tool.CreateNumberedSurfacePad pinNumber ->
                         text <| "Place pin number " ++ String.fromInt pinNumber
 
-                    Tool.CreateSoicSurfacePad mp1 mp2 ->
-                        case ( mp1, mp2 ) of
-                            ( Nothing, Nothing ) ->
+                    Tool.CreateSoicSurfacePad threePoints ->
+                        case threePoints of
+                            NoneOfThree ->
                                 text "Place pin 1"
 
-                            ( Just _, Nothing ) ->
-                                text "Place opposite pin"
+                            OneOfThree _ ->
+                                text "Place last pin of the row"
 
-                            _ ->
-                                text "Place pin next to opposite pin"
+                            TwoOfThree _ _ ->
+                                text "Move one pin towards pin 1"
 
-                    Tool.CreateRowSurfacePad _ mp1 mp2 ->
-                        case ( mp1, mp2 ) of
-                            ( Nothing, Nothing ) ->
+                            ThreeOfThree _ _ _ ->
+                                text "Place second row"
+
+                    Tool.CreateRowSurfacePad _ twoPoints ->
+                        case twoPoints of
+                            NoneOfTwo ->
                                 text "Place 1st pin"
 
-                            ( Just _, Nothing ) ->
-                                text "Place last pin"
+                            OneOfTwo _ ->
+                                text "Place last pin of the row"
 
-                            _ ->
-                                text "Place 2nd last pin"
+                            TwoOfTwo _ _ ->
+                                text "Move one pin towards pin 1"
 
                     Tool.CreateNumberedThroughPad pinNumber ->
                         text <| "Place pin " ++ String.fromInt pinNumber
 
-                    Tool.CreateDipThroughPad mp1 mp2 ->
-                        case ( mp1, mp2 ) of
-                            ( Nothing, Nothing ) ->
+                    Tool.CreateDipThroughPad threePoints ->
+                        case threePoints of
+                            NoneOfThree ->
                                 text "Place pin 1"
 
-                            ( Just _, Nothing ) ->
-                                text "Place opposite pin"
+                            OneOfThree _ ->
+                                text "Place last pin of the row"
 
-                            _ ->
-                                text "Place pin next to opposite pin"
+                            TwoOfThree _ _ ->
+                                text "Move one pin towards pin 1"
 
-                    Tool.CreateRowThroughPad _ mp1 mp2 ->
-                        case ( mp1, mp2 ) of
-                            ( Nothing, Nothing ) ->
+                            ThreeOfThree _ _ _ ->
+                                text "Place second row"
+
+                    Tool.CreateRowThroughPad _ twoPoints ->
+                        case twoPoints of
+                            NoneOfTwo ->
                                 text "Place 1st pin"
 
-                            ( Just _, Nothing ) ->
-                                text "Place last pin"
+                            OneOfTwo _ ->
+                                text "Place last pin of the row"
 
-                            _ ->
-                                text "Place 2nd last pin"
+                            TwoOfTwo _ _ ->
+                                text "Move one pin towards pin 1"
 
                     Tool.DefineReferenceFrame mp1 mp2 ->
                         let

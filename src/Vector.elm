@@ -128,8 +128,10 @@ generateProjectionRejection p1 p2 p3 =
     ( p, r )
 
 
-generateSingleRow : Int -> Float -> Point -> Point -> Point -> List ( Point, Pad )
-generateSingleRow startNumber minSpacing p1 p2 p3 =
+{-| Caclulate the row step vector and number of projections that completes the row
+-}
+calculateRowStepVector : Float -> Point -> Point -> Point -> ( Point, Int )
+calculateRowStepVector minSpacing p1 p2 p3 =
     let
         vt =
             sub p2 p1
@@ -156,58 +158,46 @@ generateSingleRow startNumber minSpacing p1 p2 p3 =
         spacing =
             lt / toFloat count
 
-        -- projection
-        vp =
+        -- step vector
+        vs =
             mul ut spacing
     in
-    List.map (\number -> ( sum p1 (mul vp (toFloat number)), { number = Just (number + startNumber), label = Nothing } )) (List.range 0 (max 1 count))
+    ( vs, count )
 
 
-generateDoubleRow : Float -> Point -> Point -> Point -> List ( Point, Pad )
-generateDoubleRow minSpacing p1 p2 p3 =
+generateSingleRow : Int -> Float -> Point -> Point -> Point -> List ( Point, Pad )
+generateSingleRow startNumber minSpacing p1 p2 p3 =
     let
-        -- density
-        vd =
-            sub p2 p3
+        ( vs, count ) =
+            calculateRowStepVector minSpacing p1 p2 p3
+    in
+    List.map (\number -> ( sum p1 (mul vs (toFloat number)), { number = Just (number + startNumber), label = Nothing } )) (List.range 0 (max 1 count))
 
-        ld =
-            len vd
+
+generateDoubleRow : Float -> Point -> Point -> Point -> Point -> List ( Point, Pad )
+generateDoubleRow minSpacing p1 p2 p3 p4 =
+    -- p1, p2 and p3 behave like single row tool
+    -- p4 determines the spacing between the rows
+    let
+        ( vs, count ) =
+            calculateRowStepVector minSpacing p1 p2 p3
+
+        total =
+            count * 2
 
         ( a, _, p ) =
-            projection p1 (sum p1 vd) p2
-
-        pl =
-            len p
-
-        pu =
-            unit p pl
+            projection p1 (sum p1 vs) p4
 
         r =
             rejection a p
 
         p1r =
             sum p1 r
-
-        targetSpacing =
-            max minSpacing ld
-
-        count =
-            round <| pl / targetSpacing
-
-        spacing =
-            pl / toFloat count
-
-        -- projection
-        vp =
-            mul pu spacing
-
-        total =
-            count * 2
     in
-    List.map (\number -> ( sum p1 (mul vp (toFloat number)), { number = Just (number + 1), label = Nothing } )) (List.range 0 count)
+    List.map (\number -> ( sum p1 (mul vs (toFloat number)), { number = Just (number + 1), label = Nothing } )) (List.range 0 count)
         ++ List.map
             (\number ->
-                ( sum p1r (mul vp (toFloat number))
+                ( sum p1r (mul vs (toFloat number))
                 , { number = Just (total - number + 2), label = Nothing }
                 )
             )
