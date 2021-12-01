@@ -2,6 +2,7 @@ module Visual exposing (..)
 
 import Common exposing (Dimension(..), Point, Radius, ReferenceFrame, Thickness, Width, fromPoint, toPairs)
 import Conductor exposing (Conductor(..), ConstructionPoint(..), Net(..), SurfaceConductor(..), ThroughConductor(..), TracePoint, conductorNet, constructionPointA, constructionPointPoint, surfaceConductorNet)
+import Json.Decode as Decode
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
 import Svg.Events as SvgE
@@ -21,10 +22,13 @@ type VisualElement
     | ConstructionSegment (List (ConstructionPoint Thickness))
     | ConstructionCrosshair (ConstructionPoint Thickness)
     | Text Point String Int Float
+    | Background
 
 
 type Msg
     = Click VisualElement
+    | MouseOver VisualElement
+    | MouseOut VisualElement
 
 
 elementConductor : VisualElement -> Maybe Conductor
@@ -63,6 +67,9 @@ elementConductor element =
         Text _ _ _ _ ->
             Nothing
 
+        Background ->
+            Nothing
+
 
 viewVisualElement : ModelVisuals a -> VisualElement -> Svg Msg
 viewVisualElement model element =
@@ -75,7 +82,9 @@ viewVisualElement model element =
             viewCircle point
                 radius
                 [ SvgA.fill color
-                , SvgE.onClick (Click element)
+                , SvgE.stopPropagationOn "click" (Decode.succeed ( Click element, True ))
+                , SvgE.onMouseOver (MouseOver element)
+                , SvgE.onMouseOut (MouseOut element)
                 , SvgA.class "clickable"
                 ]
                 (Maybe.map (\t -> ( t, "white" )) maybeText)
@@ -126,7 +135,9 @@ viewVisualElement model element =
                 p2
                 thickness
                 [ SvgA.stroke <| deriveColor model element
-                , SvgE.onClick (Click element)
+                , SvgE.stopPropagationOn "click" (Decode.succeed ( Click element, True ))
+                , SvgE.onMouseOver (MouseOver element)
+                , SvgE.onMouseOut (MouseOut element)
                 , SvgA.strokeLinecap "round"
                 , SvgA.class "clickable"
                 ]
@@ -136,7 +147,9 @@ viewVisualElement model element =
                 p2
                 thickness
                 [ SvgA.stroke <| deriveColor model element
-                , SvgE.onClick (Click element)
+                , SvgE.stopPropagationOn "click" (Decode.succeed ( Click element, True ))
+                , SvgE.onMouseOver (MouseOver element)
+                , SvgE.onMouseOut (MouseOut element)
                 , SvgA.class "clickable"
                 , SvgA.strokeDasharray <| String.join "," [ String.fromFloat (2 * thickness), String.fromFloat (1 * thickness) ]
                 ]
@@ -196,6 +209,9 @@ viewVisualElement model element =
                 , SvgA.style <| "transform-box: fill-box;transform-origin: center;transform:rotate(" ++ String.fromFloat rotation ++ "rad)"
                 ]
                 [ Svg.text string ]
+
+        Background ->
+            Svg.text ""
 
 
 viewCircle : Point -> Radius -> List (Svg.Attribute Msg) -> Maybe ( String, String ) -> Svg Msg

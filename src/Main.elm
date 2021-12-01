@@ -156,6 +156,7 @@ type Msg
     | FormWelcomeImportProject
     | FormRefApply Form.RefFormData
     | FormRefClear
+    | FormNetApply Form.NetFormData
     | SaveProject
     | DownloadProject String
     | DownloadProjectFailure ()
@@ -385,7 +386,7 @@ doUpdate msg model =
 
                     81 ->
                         -- q
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.SelectTool Nothing) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.SelectTool Tool.NoSelection) model.timeline.current) model
 
                     87 ->
                         -- w
@@ -577,6 +578,10 @@ doUpdate msg model =
             -- TODO show error form
             ( model, Cmd.none )
 
+        FormNetApply netFormData ->
+            -- TODO
+            ( model, Cmd.none )
+
 
 undo : Model -> ( Model, Cmd Msg )
 undo model =
@@ -653,6 +658,7 @@ view model =
                                 , SvgA.class <| "tool-" ++ Tool.toolToString model.timeline.current.tool
                                 , VirtualDom.attribute "xmlns" "http://www.w3.org/2000/svg"
                                 , VirtualDom.attribute "xmlns:xlink" "http://www.w3.org/1999/xlink"
+                                , SvgE.onClick (Workspace <| Workspace.VisualElementMsg <| Visual.Click Visual.Background)
 
                                 --
                                 ]
@@ -892,8 +898,8 @@ sidebar model =
         , sidebarKeyRow0 model.timeline.current
         , div [ id "key-row-1" ]
             [ button
-                [ activeClass <| activeTool model (Tool.SelectTool Nothing)
-                , onClick <| toolMsg <| Tool.SetTool <| Tool.SelectTool Nothing
+                [ activeClass <| activeTool model (Tool.SelectTool Tool.NoSelection)
+                , onClick <| toolMsg <| Tool.SetTool <| Tool.SelectTool Tool.NoSelection
                 ]
                 [ text "Select", span [ class "keycode" ] [ text "q" ] ]
             , button
@@ -1233,6 +1239,10 @@ viewForm model =
             , ref =
                 { apply = FormRefApply
                 , clear = FormRefClear
+                }
+            , net =
+                { apply = FormNetApply
+                , options = []
                 }
             }
 

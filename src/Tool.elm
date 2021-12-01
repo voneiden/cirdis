@@ -34,7 +34,7 @@ import Visual exposing (ModelVisuals, VisualElement(..), viewVisualElement)
 
 
 type Tool
-    = SelectTool (Maybe Conductor)
+    = SelectTool Selection
     | CreateTraceTool (List (ConstructionPoint Thickness))
     | CreateSurfacePadTool
     | CreateNumberedSurfacePad Int
@@ -50,11 +50,18 @@ type Tool
     | CreateAngleDimension (Maybe Point) (Maybe Point)
 
 
+type Selection
+    = NoSelection
+    | PointSelection (List Conductor) Point
+    | SegmentSelection Conductor Point Point
+    | NetSelection Net
+
+
 resetTool : Tool -> Tool
 resetTool tool =
     case tool of
         SelectTool _ ->
-            SelectTool Nothing
+            SelectTool NoSelection
 
         CreateTraceTool _ ->
             CreateTraceTool []
@@ -624,6 +631,31 @@ updateThickness delta model =
 viewTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Svg Visual.Msg
 viewTool model =
     case model.tool of
+        SelectTool selection ->
+            let
+                cp =
+                    snapTo model.snapDistance model.cursor model.conductors (activeLayerSurfaceConductors model) model.thickness
+            in
+            case selection of
+                NoSelection ->
+                    viewVisualElement model (ConstructionCrosshair cp)
+
+                PointSelection conductors p1 ->
+                    Svg.g []
+                        [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
+                        , viewVisualElement model (ConstructionCrosshair cp)
+                        ]
+
+                SegmentSelection conductor p1 p2 ->
+                    Svg.g []
+                        [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
+                        , viewVisualElement model (ConstructionCrosshair (FreePoint p2 0))
+                        , viewVisualElement model (ConstructionCrosshair cp)
+                        ]
+
+                NetSelection net ->
+                    viewVisualElement model (ConstructionCrosshair cp)
+
         CreateTraceTool cps ->
             let
                 cp =

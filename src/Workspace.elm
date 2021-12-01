@@ -41,7 +41,7 @@ defaultModel =
     , canvas = { width = 0, height = 0 }
     , radius = 10
     , thickness = 5
-    , tool = Tool.SelectTool Nothing
+    , tool = Tool.SelectTool Tool.NoSelection
     , conductors = []
     , nextNetId = 1
     , snapDistance = 10
@@ -195,41 +195,57 @@ update msg model =
         Unfocus ->
             ( { model | focused = False }, Cmd.none, False )
 
-        VisualElementMsg (Visual.Click element) ->
-            case element of
-                Visual.Circle conductor point radius _ ->
-                    ( model, Cmd.none, True )
+        VisualElementMsg visualElementMsg ->
+            case visualElementMsg of
+                Visual.Click element ->
+                    case model.tool of
+                        Tool.SelectTool selection ->
+                            case element of
+                                Visual.Circle conductor point radius _ ->
+                                    ( model, Cmd.none, True )
 
-                -- TODO
-                Visual.ConstructionCircle point radius _ ->
-                    ( model, Cmd.none, True )
+                                -- TODO
+                                Visual.ConstructionCircle point radius _ ->
+                                    ( model, Cmd.none, True )
 
-                Visual.Square conductor point width _ ->
-                    ( model, Cmd.none, True )
+                                Visual.Square conductor point width _ ->
+                                    ( model, Cmd.none, True )
 
-                Visual.SquareOutline conductor point width _ ->
-                    ( model, Cmd.none, True )
+                                Visual.SquareOutline conductor point width _ ->
+                                    ( model, Cmd.none, True )
 
-                Visual.ConstructionSquare _ _ _ ->
-                    ( model, Cmd.none, False )
+                                Visual.ConstructionSquare _ _ _ ->
+                                    ( model, Cmd.none, False )
 
-                Visual.Line conductor p1 p2 _ ->
-                    ( model, Cmd.none, True )
+                                Visual.Line conductor p1 p2 _ ->
+                                    ( { model | tool = Tool.SelectTool (Tool.SegmentSelection conductor p1 p2) }, Cmd.none, True )
 
-                Visual.DashedLine conductor p1 p2 _ ->
-                    ( model, Cmd.none, True )
+                                Visual.DashedLine conductor p1 p2 _ ->
+                                    ( model, Cmd.none, True )
 
-                Visual.ConstructionLine _ _ _ ->
-                    ( model, Cmd.none, False )
+                                Visual.ConstructionLine _ _ _ ->
+                                    ( model, Cmd.none, False )
 
-                Visual.ConstructionSegment constructionPoints ->
-                    ( model, Cmd.none, False )
+                                Visual.ConstructionSegment constructionPoints ->
+                                    ( model, Cmd.none, False )
 
-                Visual.ConstructionCrosshair constructionPoint ->
-                    ( model, Cmd.none, False )
+                                Visual.ConstructionCrosshair constructionPoint ->
+                                    ( model, Cmd.none, False )
 
-                Visual.Text _ _ _ _ ->
-                    ( model, Cmd.none, False )
+                                Visual.Text _ _ _ _ ->
+                                    ( model, Cmd.none, False )
+
+                                Visual.Background ->
+                                    ( { model | tool = Tool.SelectTool Tool.NoSelection }, Cmd.none, False )
+
+                        _ ->
+                            ( model, Cmd.none, False )
+
+                Visual.MouseOver visualElement ->
+                    Debug.todo "implement hover"
+
+                Visual.MouseOut visualElement ->
+                    Debug.todo "implement mouse out"
 
         ToolMsg toolMsg ->
             Tool.update ToolMsg toolMsg model
