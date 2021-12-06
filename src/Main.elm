@@ -6,6 +6,7 @@ import Browser.Dom as Dom
 import Browser.Events exposing (onKeyUp, onMouseUp)
 import Bytes exposing (Bytes)
 import Common exposing (Point, ThreePoints(..), TwoPoints(..), chainUpdate)
+import Conductor
 import Dict exposing (Dict)
 import File exposing (File)
 import File.Download
@@ -386,23 +387,23 @@ doUpdate msg model =
 
                     81 ->
                         -- q
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.SelectTool Tool.NoInteraction Tool.NoInteraction) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Conductor.SelectTool Conductor.NoInteraction Conductor.NoInteraction) model.timeline.current) model
 
                     87 ->
                         -- w
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateDistanceDimension Nothing) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Conductor.CreateDistanceDimension Nothing) model.timeline.current) model
 
                     65 ->
                         -- a
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateThroughPadTool) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Conductor.CreateThroughPadTool) model.timeline.current) model
 
                     83 ->
                         -- s
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateSurfacePadTool) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Conductor.CreateSurfacePadTool) model.timeline.current) model
 
                     68 ->
                         -- d
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateTraceTool [] Tool.NoInteraction) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Conductor.CreateTraceTool [] Conductor.NoInteraction) model.timeline.current) model
 
                     90 ->
                         -- z
@@ -898,8 +899,8 @@ sidebar model =
         , sidebarKeyRow0 model.timeline.current
         , div [ id "key-row-1" ]
             [ button
-                [ activeClass <| activeTool model (Tool.SelectTool Tool.NoInteraction Tool.NoInteraction)
-                , onClick <| toolMsg <| Tool.SetTool <| Tool.SelectTool Tool.NoInteraction Tool.NoInteraction
+                [ activeClass <| activeTool model (Tool.SelectTool Conductor.NoInteraction Conductor.NoInteraction)
+                , onClick <| toolMsg <| Tool.SetTool <| Tool.SelectTool Conductor.NoInteraction Conductor.NoInteraction
                 ]
                 [ text "Select", span [ class "keycode" ] [ text "q" ] ]
             , button
@@ -920,8 +921,8 @@ sidebar model =
                 ]
                 [ text "SMT", span [ class "keycode" ] [ text "s" ] ]
             , button
-                [ activeClass <| activeTool model (Tool.CreateTraceTool [] Tool.NoInteraction)
-                , onClick <| toolMsg <| Tool.SetTool <| Tool.CreateTraceTool [] Tool.NoInteraction
+                [ activeClass <| activeTool model (Tool.CreateTraceTool [] Conductor.NoInteraction)
+                , onClick <| toolMsg <| Tool.SetTool <| Tool.CreateTraceTool [] Conductor.NoInteraction
                 ]
                 [ text "Trace", span [ class "keycode" ] [ text "d" ] ]
             ]
@@ -998,11 +999,6 @@ viewWorkspace model =
     let
         current =
             model.timeline.current
-
-        appearance =
-            { highlightNets = current.highlightNets
-            , select = current.select
-            }
 
         conductors =
             current.conductors

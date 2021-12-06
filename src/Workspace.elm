@@ -24,8 +24,6 @@ type alias Model =
     , nextNetId : Int -- Running id for nets
     , snapDistance : Float
     , autoNetColor : String
-    , highlightNets : List Net -- deprecated
-    , select : List Visual.VisualElement -- deprecated
     , ref : Maybe ReferenceFrame
     , form : Form.Form
     , dimensions : List Dimension
@@ -41,13 +39,11 @@ defaultModel =
     , canvas = { width = 0, height = 0 }
     , radius = 10
     , thickness = 5
-    , tool = Tool.SelectTool Tool.NoInteraction Tool.NoInteraction
+    , tool = Tool.SelectTool Conductor.NoInteraction Conductor.NoInteraction
     , conductors = []
     , nextNetId = 1
     , snapDistance = 10
     , autoNetColor = ""
-    , highlightNets = []
-    , select = []
     , ref = Nothing
     , form = Form.WelcomeForm
     , dimensions = []
@@ -148,20 +144,7 @@ update msg model =
                 ( { model | cursor = point, transform = translateTransform model.transform dx dy }, Cmd.none, False )
 
             else
-                case model.tool of
-                    Tool.CreateTraceTool cps highlight ->
-                        let
-                            snapPoint =
-                                snapTo model.snapDistance point model.conductors (activeLayerSurfaceConductors model) 0
-                        in
-                        ( { model | cursor = point }
-                            |> createTraceToHighlightNets (snapPoint :: cps)
-                        , Cmd.none
-                        , False
-                        )
-
-                    _ ->
-                        ( { model | cursor = point }, Cmd.none, False )
+                ( { model | cursor = point }, Cmd.none, False)
 
         LeftClick point ->
             if List.isEmpty model.layers then
@@ -200,10 +183,10 @@ update msg model =
                 Visual.Click element ->
                     case element of
                         Visual.Line conductor p1 p2 _ ->
-                            ( { model | tool = Tool.setToolSelection model.tool (Tool.SegmentInteraction conductor p1 p2) }, Cmd.none, True )
+                            ( { model | tool = Tool.setToolSelection model.tool (Conductor.SegmentInteraction conductor p1 p2) }, Cmd.none, True )
 
                         Visual.Background ->
-                            ( { model | tool = Tool.setToolSelection model.tool Tool.NoInteraction }, Cmd.none, False )
+                            ( { model | tool = Tool.setToolSelection model.tool Conductor.NoInteraction }, Cmd.none, False )
 
                         _ ->
                             ( model, Cmd.none, False )
@@ -211,10 +194,10 @@ update msg model =
                 Visual.MouseOver visualElement ->
                     case visualElement of
                         Visual.Line conductor p1 p2 _ ->
-                            ( { model | tool = Tool.setToolHighlight model.tool (Tool.SegmentInteraction conductor p1 p2) }, Cmd.none, True )
+                            ( { model | tool = Tool.setToolHighlight model.tool (Conductor.SegmentInteraction conductor p1 p2) }, Cmd.none, True )
 
                         Visual.Background ->
-                            ( { model | tool = Tool.setToolHighlight model.tool Tool.NoInteraction }, Cmd.none, False )
+                            ( { model | tool = Tool.setToolHighlight model.tool Conductor.NoInteraction }, Cmd.none, False )
 
                         _ ->
                             ( model, Cmd.none, False )

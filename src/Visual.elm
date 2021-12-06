@@ -1,7 +1,7 @@
 module Visual exposing (..)
 
 import Common exposing (Dimension(..), Point, Radius, ReferenceFrame, Thickness, Width, fromPoint, toPairs)
-import Conductor exposing (Conductor(..), ConstructionPoint(..), Net(..), SurfaceConductor(..), ThroughConductor(..), TracePoint, conductorNet, constructionPointA, constructionPointPoint, surfaceConductorNet)
+import Conductor exposing (Conductor(..), ConstructionPoint(..), Highlight, InteractionInformation, Net(..), Selection, SurfaceConductor(..), ThroughConductor(..), Tool, TracePoint, conductorNet, constructionPointA, constructionPointPoint, interactionInformation, isConductorInteraction, surfaceConductorNet)
 import Json.Decode as Decode
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
@@ -163,7 +163,7 @@ viewVisualElement model element =
 
         ConstructionSegment cps ->
             Svg.g [] <|
-                List.map (\( cp1, cp2 ) -> viewVisualElement model (ConstructionLine (constructionPointPoint cp1) (constructionPointPoint cp2) (constructionPointA cp2))) (toPairs cps)
+                List.map (\( cp1, cp2 ) -> viewVisualElement model interaction (ConstructionLine (constructionPointPoint cp1) (constructionPointPoint cp2) (constructionPointA cp2))) (toPairs cps)
 
         ConstructionCrosshair cp ->
             let
@@ -323,23 +323,22 @@ throughConductorToVisualElement throughConductor =
             [ Circle (Through throughConductor) point radius (Maybe.map String.fromInt pad.number) ]
 
 
-viewLazyThroughConductors : ModelVisuals a -> List ThroughConductor -> Svg Msg
-viewLazyThroughConductors appearance throughConductors =
-    Svg.Lazy.lazy4
-        (\_ _ _ tc ->
-            viewThroughConductors appearance tc
+viewLazyThroughConductors : ModelVisuals a -> InteractionInformation -> List ThroughConductor -> Svg Msg
+viewLazyThroughConductors appearance interaction throughConductors =
+    Svg.Lazy.lazy3
+        (\_ _ tc ->
+            viewThroughConductors appearance interaction tc
         )
-        appearance.highlightNets
-        appearance.select
         appearance.ref
+        interaction
         throughConductors
 
 
-viewThroughConductors : ModelVisuals a -> List ThroughConductor -> Svg Msg
-viewThroughConductors appearance throughConductors =
+viewThroughConductors : ModelVisuals a -> InteractionInformation -> List ThroughConductor -> Svg Msg
+viewThroughConductors appearance interaction throughConductors =
     Svg.g []
         (List.concatMap throughConductorToVisualElement throughConductors
-            |> List.map (viewVisualElement appearance)
+            |> List.map (viewVisualElement appearance interaction)
         )
 
 
@@ -386,18 +385,52 @@ traceToVisualElements hidden c tracePoints =
 
 
 type alias ModelVisuals a =
-    { a | highlightNets : List Net, select : List VisualElement, ref : Maybe ReferenceFrame }
+    { a
+        | ref : Maybe ReferenceFrame
+        , tool : Tool
+    }
+
+
+toolSelection : ModelVisuals a -> Selection
+toolSelection model =
+    Tuple.first <| interactionInformation model.tool
+
+toolHighlight : ModelVisuals a -> Highlight
+toolHighlight model =
+    Tuple.second <| interactionInformation model.tool
+
+isMaybeConductorSelected : ModelVisuals a -> Maybe Conductor -> Bool
+isMaybeConductorSelected model mc =
+    case mc of
+        Just c ->
+            isConductorInteraction c (toolSelection model)
+
+        Nothing ->
+            False
+
+
+isMaybeConductorHighlighted : ModelVisuals a -> Maybe Conductor -> Bool
+isMaybeConductorHighlighted model mc =
+    case mc of
+        Just c ->
+            isConductorInteraction c (toolHighlight model)
+
+        Nothing ->
+            False
 
 
 deriveColor : ModelVisuals a -> VisualElement -> String
 deriveColor model element =
     let
-        net =
+        mc =
             elementConductor element
+
+        net =
+            mc
                 |> Maybe.map conductorNet
                 |> Maybe.withDefault (NoNet 0)
     in
-    if List.member element model.select then
+    if isMaybeConductorSelected model mc then
         case net of
             NoNet _ ->
                 "cyan"
@@ -408,7 +441,7 @@ deriveColor model element =
             CustomNet _ c ->
                 "cyan"
 
-    else if List.member net model.highlightNets then
+    else if isMaybeConductorHighlighted model mc then
         case net of
             NoNet _ ->
                 "cyan"
@@ -432,8 +465,8 @@ deriveColor model element =
                 c
 
 
-viewSurfaceConductors : ModelVisuals a -> List { b | conductors : List SurfaceConductor } -> Svg Msg
-viewSurfaceConductors model layers =
+viewSurfaceConductors : ModelVisuals a -> InteractionInformation -> List { b | conductors : List SurfaceConductor } -> Svg Msg
+viewSurfaceConductors model interaction layers =
     case layers of
         layer :: hiddenLayers ->
             let
@@ -442,7 +475,7 @@ viewSurfaceConductors model layers =
                         |> List.filter (\c -> List.member (surfaceConductorNet c) model.highlightNets)
 
                 f hidden =
-                    List.map (viewVisualElement model) << surfaceConductorToVisualElement hidden
+                    List.map (viewVisualElement model interaction) << surfaceConductorToVisualElement hidden
             in
             Svg.Lazy.lazy2
                 (\c cHidden ->
@@ -457,13 +490,13 @@ viewSurfaceConductors model layers =
             Svg.text ""
 
 
-viewDimensions : ModelVisuals a -> List Dimension -> Svg Msg
-viewDimensions model dimensions =
-    Svg.g [] (List.map (viewDimension model) dimensions)
+viewDimensions : ModelVisuals a -> InteractionInformation -> List Dimension -> Svg Msg
+viewDimensions model interaction dimensions =
+    Svg.g [] (List.map (viewDimension model interaction) dimensions)
 
 
-viewDimension : ModelVisuals a -> Dimension -> Svg Msg
-viewDimension model dimension =
+viewDimension : ModelVisuals a -> InteractionInformation -> Dimension -> Svg Msg
+viewDimension model interaction dimension =
     case dimension of
         DistanceDimension p1 p2 ->
             let
@@ -509,17 +542,17 @@ viewDimension model dimension =
                             "?"
             in
             Svg.g []
-                [ viewVisualElement model (ConstructionCircle p1 5 Nothing)
-                , viewVisualElement model (ConstructionLine p1 p2 1)
-                , viewVisualElement model (ConstructionCircle p2 5 Nothing)
-                , viewVisualElement model (Text textPosition referenceLength 20 textRotation)
+                [ viewVisualElement model interaction (ConstructionCircle p1 5 Nothing)
+                , viewVisualElement model interaction (ConstructionLine p1 p2 1)
+                , viewVisualElement model interaction (ConstructionCircle p2 5 Nothing)
+                , viewVisualElement model interaction (Text textPosition referenceLength 20 textRotation)
                 ]
 
         AngleDimension p1 p2 p3 ->
             Svg.g []
-                [ viewVisualElement model (ConstructionCircle p1 5 Nothing)
-                , viewVisualElement model (ConstructionCircle p2 5 Nothing)
-                , viewVisualElement model (ConstructionCircle p3 5 Nothing)
-                , viewVisualElement model (ConstructionLine p1 p2 1)
-                , viewVisualElement model (ConstructionLine p1 p3 1)
+                [ viewVisualElement model interaction (ConstructionCircle p1 5 Nothing)
+                , viewVisualElement model interaction (ConstructionCircle p2 5 Nothing)
+                , viewVisualElement model interaction (ConstructionCircle p3 5 Nothing)
+                , viewVisualElement model interaction (ConstructionLine p1 p2 1)
+                , viewVisualElement model interaction (ConstructionLine p1 p3 1)
                 ]

@@ -1,6 +1,70 @@
 module Conductor exposing (..)
 
-import Common exposing (Pad, Point, Radius, Thickness, Width, distanceToPoint, unique)
+import Common exposing (Pad, Point, Radius, Thickness, ThreePoints, TwoPoints, Width, distanceToPoint, unique)
+
+
+type Interaction
+    = NoInteraction
+    | PointInteraction (List Conductor) Point
+    | SegmentInteraction Conductor Point Point
+    | NetInteraction Net
+
+
+type alias Selection =
+    Interaction
+
+
+type alias Highlight =
+    Interaction
+
+
+type alias InteractionInformation =
+    ( Selection, Highlight )
+
+isConductorInteraction : Conductor -> Interaction -> Bool
+isConductorInteraction conductor interaction =
+    case interaction of
+        NoInteraction ->
+            False
+
+        PointInteraction conductors _ ->
+            List.member conductor conductors
+
+        SegmentInteraction traceConductor _ _ ->
+            conductor == traceConductor
+
+        NetInteraction net ->
+            conductorNet conductor == net
+
+
+type Tool
+    = SelectTool Selection Highlight
+    | CreateTraceTool (List (ConstructionPoint Thickness)) Highlight
+    | CreateSurfacePadTool
+    | CreateNumberedSurfacePad Int
+    | CreateSoicSurfacePad ThreePoints
+    | CreateRowSurfacePad Int TwoPoints -- TODO row should support setting starting pin number
+    | CreateThroughPadTool
+    | CreateNumberedThroughPad Int
+    | CreateDipThroughPad ThreePoints
+    | CreateRowThroughPad Int TwoPoints
+    | CreateZoneTool
+    | DefineReferenceFrame (Maybe Point) (Maybe Point)
+    | CreateDistanceDimension (Maybe Point)
+    | CreateAngleDimension (Maybe Point) (Maybe Point)
+
+
+interactionInformation : Tool -> InteractionInformation
+interactionInformation tool =
+    case tool of
+        SelectTool selection highlight ->
+            ( selection, highlight )
+
+        CreateTraceTool _ highlight ->
+            ( NoInteraction, highlight )
+
+        _ ->
+            ( NoInteraction, NoInteraction )
 
 
 type Net
@@ -403,9 +467,10 @@ activeLayerSurfaceConductors model =
     Maybe.withDefault [] (Maybe.map (\l -> l.conductors) (List.head model.layers))
 
 
-createTraceToHighlightNets : List (ConstructionPoint Thickness) -> { a | highlightNets : List Net } -> { a | highlightNets : List Net }
-createTraceToHighlightNets points model =
-    { model | highlightNets = List.map conductorNet (constructionPointsToConductors points) }
+
+--createTraceToHighlightNets : List (ConstructionPoint Thickness) -> { a | highlightNets : List Net } -> { a | highlightNets : List Net }
+--createTraceToHighlightNets points model =
+--    { model | highlightNets = List.map conductorNet (constructionPointsToConductors points) }
 
 
 incrementNextNetId : { a | nextNetId : Int } -> { a | nextNetId : Int }

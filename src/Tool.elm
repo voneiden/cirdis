@@ -1,28 +1,7 @@
 module Tool exposing (..)
 
 import Common exposing (Dimension(..), Point, Radius, ReferenceFrame, Thickness, ThreePoints(..), TwoPoints(..), chainUpdate3)
-import Conductor
-    exposing
-        ( Conductor
-        , ConstructionPoint(..)
-        , MergeNet(..)
-        , ModelConductors
-        , Net(..)
-        , SurfaceConductor(..)
-        , ThroughConductor(..)
-        , activeLayerSurfaceConductors
-        , addSurfaceConductor
-        , addSurfaceConductorNoNet
-        , addThroughConductor
-        , constructionPointPoint
-        , constructionPointsToConductors
-        , constructionPointsToTrace
-        , createTraceToHighlightNets
-        , incrementNextNetId
-        , mergeNets
-        , snapTo
-        , updateConductorNet
-        )
+import Conductor exposing (Conductor, ConstructionPoint(..), Highlight, Interaction(..), InteractionInformation, MergeNet(..), ModelConductors, Net(..), Selection, SurfaceConductor(..), ThroughConductor(..), Tool(..), activeLayerSurfaceConductors, addSurfaceConductor, addSurfaceConductorNoNet, addThroughConductor, constructionPointPoint, constructionPointsToConductors, constructionPointsToTrace, incrementNextNetId, mergeNets, snapTo, updateConductorNet)
 import Form
 import Svg exposing (Svg)
 import Vector exposing (generateDoubleRow, generateSingleRow)
@@ -33,36 +12,6 @@ import Visual exposing (ModelVisuals, VisualElement(..), viewVisualElement)
 -- MODEL
 
 
-type Tool
-    = SelectTool Selection Highlight
-    | CreateTraceTool (List (ConstructionPoint Thickness)) Highlight
-    | CreateSurfacePadTool
-    | CreateNumberedSurfacePad Int
-    | CreateSoicSurfacePad ThreePoints
-    | CreateRowSurfacePad Int TwoPoints -- TODO row should support setting starting pin number
-    | CreateThroughPadTool
-    | CreateNumberedThroughPad Int
-    | CreateDipThroughPad ThreePoints
-    | CreateRowThroughPad Int TwoPoints
-    | CreateZoneTool
-    | DefineReferenceFrame (Maybe Point) (Maybe Point)
-    | CreateDistanceDimension (Maybe Point)
-    | CreateAngleDimension (Maybe Point) (Maybe Point)
-
-
-type Interaction
-    = NoInteraction
-    | PointInteraction (List Conductor) Point
-    | SegmentInteraction Conductor Point Point
-    | NetInteraction Net
-
-
-type alias Selection =
-    Interaction
-
-
-type alias Highlight =
-    Interaction
 
 
 resetTool : Tool -> Tool
@@ -111,17 +60,6 @@ resetTool tool =
             CreateAngleDimension Nothing Nothing
 
 
-selectionHighlight : Tool -> ( Selection, Highlight )
-selectionHighlight tool =
-    case tool of
-        SelectTool selection highlight ->
-            ( selection, highlight )
-
-        CreateTraceTool _ highlight ->
-            ( NoInteraction, highlight )
-
-        _ ->
-            ( NoInteraction, NoInteraction )
 
 
 toolToString : Tool -> String
@@ -238,7 +176,6 @@ update toMsg msg model =
                             in
                             if List.isEmpty points then
                                 ( { model | tool = CreateTraceTool newPoints highlight }
-                                    |> createTraceToHighlightNets newPoints
                                 , Cmd.none
                                 , True
                                 )
@@ -253,7 +190,6 @@ update toMsg msg model =
                                         ( List.foldl (updateConductorNet net) model conductors
                                             |> addSurfaceConductor (constructionPointsToTrace newPoints net)
                                             |> resetModelTool
-                                            |> createTraceToHighlightNets newPoints
                                         , Cmd.none
                                         , True
                                         )
@@ -271,7 +207,6 @@ update toMsg msg model =
                                             |> addSurfaceConductor (constructionPointsToTrace newPoints net)
                                             |> resetModelTool
                                             |> incrementNextNetId
-                                            |> createTraceToHighlightNets newPoints
                                         , Cmd.none
                                         , True
                                         )
