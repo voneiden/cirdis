@@ -386,7 +386,7 @@ doUpdate msg model =
 
                     81 ->
                         -- q
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.SelectTool Tool.NoSelection) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.SelectTool Tool.NoInteraction Tool.NoInteraction) model.timeline.current) model
 
                     87 ->
                         -- w
@@ -402,7 +402,7 @@ doUpdate msg model =
 
                     68 ->
                         -- d
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateTraceTool []) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateTraceTool [] Tool.NoInteraction) model.timeline.current) model
 
                     90 ->
                         -- z
@@ -744,10 +744,10 @@ toolAttrsAndText ( tool, active ) index =
             onClick <| Workspace <| Workspace.ToolMsg <| Tool.SetSubTool index
     in
     case tool of
-        Tool.SelectTool _ ->
+        Tool.SelectTool _ _ ->
             ( [ activeAttr, clickAttr ], text "" )
 
-        Tool.CreateTraceTool _ ->
+        Tool.CreateTraceTool _ _ ->
             ( [ activeAttr, clickAttr ], text "" )
 
         Tool.CreateSurfacePadTool ->
@@ -898,8 +898,8 @@ sidebar model =
         , sidebarKeyRow0 model.timeline.current
         , div [ id "key-row-1" ]
             [ button
-                [ activeClass <| activeTool model (Tool.SelectTool Tool.NoSelection)
-                , onClick <| toolMsg <| Tool.SetTool <| Tool.SelectTool Tool.NoSelection
+                [ activeClass <| activeTool model (Tool.SelectTool Tool.NoInteraction Tool.NoInteraction)
+                , onClick <| toolMsg <| Tool.SetTool <| Tool.SelectTool Tool.NoInteraction Tool.NoInteraction
                 ]
                 [ text "Select", span [ class "keycode" ] [ text "q" ] ]
             , button
@@ -920,8 +920,8 @@ sidebar model =
                 ]
                 [ text "SMT", span [ class "keycode" ] [ text "s" ] ]
             , button
-                [ activeClass <| activeTool model (Tool.CreateTraceTool [])
-                , onClick <| toolMsg <| Tool.SetTool <| Tool.CreateTraceTool []
+                [ activeClass <| activeTool model (Tool.CreateTraceTool [] Tool.NoInteraction)
+                , onClick <| toolMsg <| Tool.SetTool <| Tool.CreateTraceTool [] Tool.NoInteraction
                 ]
                 [ text "Trace", span [ class "keycode" ] [ text "d" ] ]
             ]
@@ -947,7 +947,7 @@ activeClass isActive =
 activeTool : Model -> Tool.Tool -> Bool
 activeTool model tool =
     case ( model.timeline.current.tool, tool ) of
-        ( Tool.SelectTool _, Tool.SelectTool _ ) ->
+        ( Tool.SelectTool _ _, Tool.SelectTool _ _ ) ->
             True
 
         ( Tool.CreateSurfacePadTool, Tool.CreateSurfacePadTool ) ->
@@ -974,7 +974,7 @@ activeTool model tool =
         ( Tool.CreateRowThroughPad _ _, Tool.CreateThroughPadTool ) ->
             True
 
-        ( Tool.CreateTraceTool _, Tool.CreateTraceTool _ ) ->
+        ( Tool.CreateTraceTool _ _, Tool.CreateTraceTool _ _ ) ->
             True
 
         ( Tool.CreateZoneTool, Tool.CreateZoneTool ) ->
@@ -1115,10 +1115,10 @@ viewInfo model =
 
             else
                 case model.timeline.current.tool of
-                    Tool.SelectTool maybeConductor ->
+                    Tool.SelectTool selection highlight ->
                         text "Info about selection"
 
-                    Tool.CreateTraceTool constructionPoints ->
+                    Tool.CreateTraceTool constructionPoints highlight ->
                         text <| "Trace thickness: " ++ String.fromFloat model.timeline.current.thickness
 
                     Tool.CreateSurfacePadTool ->

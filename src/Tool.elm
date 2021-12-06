@@ -34,8 +34,8 @@ import Visual exposing (ModelVisuals, VisualElement(..), viewVisualElement)
 
 
 type Tool
-    = SelectTool Selection
-    | CreateTraceTool (List (ConstructionPoint Thickness))
+    = SelectTool Selection Highlight
+    | CreateTraceTool (List (ConstructionPoint Thickness)) Highlight
     | CreateSurfacePadTool
     | CreateNumberedSurfacePad Int
     | CreateSoicSurfacePad ThreePoints
@@ -50,21 +50,29 @@ type Tool
     | CreateAngleDimension (Maybe Point) (Maybe Point)
 
 
-type Selection
-    = NoSelection
-    | PointSelection (List Conductor) Point
-    | SegmentSelection Conductor Point Point
-    | NetSelection Net
+type Interaction
+    = NoInteraction
+    | PointInteraction (List Conductor) Point
+    | SegmentInteraction Conductor Point Point
+    | NetInteraction Net
+
+
+type alias Selection =
+    Interaction
+
+
+type alias Highlight =
+    Interaction
 
 
 resetTool : Tool -> Tool
 resetTool tool =
     case tool of
-        SelectTool _ ->
-            SelectTool NoSelection
+        SelectTool _ _ ->
+            SelectTool NoInteraction NoInteraction
 
-        CreateTraceTool _ ->
-            CreateTraceTool []
+        CreateTraceTool _ _ ->
+            CreateTraceTool [] NoInteraction
 
         CreateSurfacePadTool ->
             CreateSurfacePadTool
@@ -103,13 +111,26 @@ resetTool tool =
             CreateAngleDimension Nothing Nothing
 
 
+selectionHighlight : Tool -> ( Selection, Highlight )
+selectionHighlight tool =
+    case tool of
+        SelectTool selection highlight ->
+            ( selection, highlight )
+
+        CreateTraceTool _ highlight ->
+            ( NoInteraction, highlight )
+
+        _ ->
+            ( NoInteraction, NoInteraction )
+
+
 toolToString : Tool -> String
 toolToString tool =
     case tool of
-        SelectTool _ ->
+        SelectTool _ _ ->
             "select"
 
-        CreateTraceTool _ ->
+        CreateTraceTool _ _ ->
             "trace"
 
         CreateSurfacePadTool ->
@@ -149,6 +170,29 @@ toolToString tool =
             "angle-dimension"
 
 
+setToolSelection : Tool -> Selection -> Tool
+setToolSelection tool selection =
+    case tool of
+        SelectTool _ highlight ->
+            SelectTool selection highlight
+
+        _ ->
+            tool
+
+
+setToolHighlight : Tool -> Highlight -> Tool
+setToolHighlight tool highlight =
+    case tool of
+        SelectTool selection _ ->
+            SelectTool selection highlight
+
+        CreateTraceTool cps _ ->
+            CreateTraceTool cps highlight
+
+        _ ->
+            tool
+
+
 
 -- UPDATE
 
@@ -185,7 +229,7 @@ update toMsg msg model =
                     snapTo model.snapDistance point model.conductors (activeLayerSurfaceConductors model)
             in
             case model.tool of
-                CreateTraceTool points ->
+                CreateTraceTool points highlight ->
                     case snapPoint model.thickness of
                         SnapPoint p c t ->
                             let
@@ -193,7 +237,7 @@ update toMsg msg model =
                                     points ++ [ SnapPoint p c t ]
                             in
                             if List.isEmpty points then
-                                ( { model | tool = CreateTraceTool newPoints }
+                                ( { model | tool = CreateTraceTool newPoints highlight }
                                     |> createTraceToHighlightNets newPoints
                                 , Cmd.none
                                 , True
@@ -241,7 +285,7 @@ update toMsg msg model =
                                 ( model, Cmd.none, False )
 
                             else
-                                ( { model | tool = CreateTraceTool t2 }, Cmd.none, False )
+                                ( { model | tool = CreateTraceTool t2 highlight }, Cmd.none, False )
 
                 CreateThroughPadTool ->
                     ( addThroughConductor (ThroughPad { number = Nothing, label = Nothing } point model.radius) model, Cmd.none, True )
@@ -449,7 +493,7 @@ update toMsg msg model =
                 CreateRowSurfacePad _ _ ->
                     ( updateRadius delta model, Cmd.none, False )
 
-                CreateTraceTool _ ->
+                CreateTraceTool _ _ ->
                     ( updateThickness delta model, Cmd.none, False )
 
                 _ ->
@@ -494,7 +538,7 @@ update toMsg msg model =
                             ( { model | tool = t }, Cmd.none, False )
             in
             case ( tool, model.tool ) of
-                ( CreateTraceTool [], CreateTraceTool trace ) ->
+                ( CreateTraceTool [] NoInteraction, CreateTraceTool trace selection ) ->
                     ( { model
                         | tool =
                             CreateTraceTool
@@ -503,6 +547,7 @@ update toMsg msg model =
                                     |> List.drop 1
                                     |> List.reverse
                                 )
+                                selection
                       }
                     , Cmd.none
                     , False
@@ -531,10 +576,10 @@ update toMsg msg model =
 
         SetSubTool index ->
             case model.tool of
-                SelectTool _ ->
+                SelectTool _ _ ->
                     ( model, Cmd.none, False )
 
-                CreateTraceTool _ ->
+                CreateTraceTool _ _ ->
                     ( model, Cmd.none, False )
 
                 CreateSurfacePadTool ->
@@ -631,32 +676,32 @@ updateThickness delta model =
 viewTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Svg Visual.Msg
 viewTool model =
     case model.tool of
-        SelectTool selection ->
+        SelectTool selection highlight ->
             let
                 cp =
                     snapTo model.snapDistance model.cursor model.conductors (activeLayerSurfaceConductors model) model.thickness
             in
             case selection of
-                NoSelection ->
+                NoInteraction ->
                     viewVisualElement model (ConstructionCrosshair cp)
 
-                PointSelection conductors p1 ->
+                PointInteraction conductors p1 ->
                     Svg.g []
                         [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
                         , viewVisualElement model (ConstructionCrosshair cp)
                         ]
 
-                SegmentSelection conductor p1 p2 ->
+                SegmentInteraction conductor p1 p2 ->
                     Svg.g []
                         [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
                         , viewVisualElement model (ConstructionCrosshair (FreePoint p2 0))
                         , viewVisualElement model (ConstructionCrosshair cp)
                         ]
 
-                NetSelection net ->
+                NetInteraction net ->
                     viewVisualElement model (ConstructionCrosshair cp)
 
-        CreateTraceTool cps ->
+        CreateTraceTool cps highlight ->
             let
                 cp =
                     snapTo model.snapDistance model.cursor model.conductors (activeLayerSurfaceConductors model) model.thickness

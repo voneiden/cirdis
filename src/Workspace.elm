@@ -24,8 +24,8 @@ type alias Model =
     , nextNetId : Int -- Running id for nets
     , snapDistance : Float
     , autoNetColor : String
-    , highlightNets : List Net
-    , select : List Visual.VisualElement
+    , highlightNets : List Net -- deprecated
+    , select : List Visual.VisualElement -- deprecated
     , ref : Maybe ReferenceFrame
     , form : Form.Form
     , dimensions : List Dimension
@@ -41,7 +41,7 @@ defaultModel =
     , canvas = { width = 0, height = 0 }
     , radius = 10
     , thickness = 5
-    , tool = Tool.SelectTool Tool.NoSelection
+    , tool = Tool.SelectTool Tool.NoInteraction Tool.NoInteraction
     , conductors = []
     , nextNetId = 1
     , snapDistance = 10
@@ -149,7 +149,7 @@ update msg model =
 
             else
                 case model.tool of
-                    Tool.CreateTraceTool cps ->
+                    Tool.CreateTraceTool cps highlight ->
                         let
                             snapPoint =
                                 snapTo model.snapDistance point model.conductors (activeLayerSurfaceConductors model) 0
@@ -198,51 +198,26 @@ update msg model =
         VisualElementMsg visualElementMsg ->
             case visualElementMsg of
                 Visual.Click element ->
-                    case model.tool of
-                        Tool.SelectTool selection ->
-                            case element of
-                                Visual.Circle conductor point radius _ ->
-                                    ( model, Cmd.none, True )
+                    case element of
+                        Visual.Line conductor p1 p2 _ ->
+                            ( { model | tool = Tool.setToolSelection model.tool (Tool.SegmentInteraction conductor p1 p2) }, Cmd.none, True )
 
-                                -- TODO
-                                Visual.ConstructionCircle point radius _ ->
-                                    ( model, Cmd.none, True )
-
-                                Visual.Square conductor point width _ ->
-                                    ( model, Cmd.none, True )
-
-                                Visual.SquareOutline conductor point width _ ->
-                                    ( model, Cmd.none, True )
-
-                                Visual.ConstructionSquare _ _ _ ->
-                                    ( model, Cmd.none, False )
-
-                                Visual.Line conductor p1 p2 _ ->
-                                    ( { model | tool = Tool.SelectTool (Tool.SegmentSelection conductor p1 p2) }, Cmd.none, True )
-
-                                Visual.DashedLine conductor p1 p2 _ ->
-                                    ( model, Cmd.none, True )
-
-                                Visual.ConstructionLine _ _ _ ->
-                                    ( model, Cmd.none, False )
-
-                                Visual.ConstructionSegment constructionPoints ->
-                                    ( model, Cmd.none, False )
-
-                                Visual.ConstructionCrosshair constructionPoint ->
-                                    ( model, Cmd.none, False )
-
-                                Visual.Text _ _ _ _ ->
-                                    ( model, Cmd.none, False )
-
-                                Visual.Background ->
-                                    ( { model | tool = Tool.SelectTool Tool.NoSelection }, Cmd.none, False )
+                        Visual.Background ->
+                            ( { model | tool = Tool.setToolSelection model.tool Tool.NoInteraction }, Cmd.none, False )
 
                         _ ->
                             ( model, Cmd.none, False )
 
                 Visual.MouseOver visualElement ->
-                    Debug.todo "implement hover"
+                    case visualElement of
+                        Visual.Line conductor p1 p2 _ ->
+                            ( { model | tool = Tool.setToolHighlight model.tool (Tool.SegmentInteraction conductor p1 p2) }, Cmd.none, True )
+
+                        Visual.Background ->
+                            ( { model | tool = Tool.setToolHighlight model.tool Tool.NoInteraction }, Cmd.none, False )
+
+                        _ ->
+                            ( model, Cmd.none, False )
 
                 Visual.MouseOut visualElement ->
                     Debug.todo "implement mouse out"
