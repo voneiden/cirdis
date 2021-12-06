@@ -2,6 +2,7 @@ module Form exposing (..)
 
 import Browser.Dom
 import Common exposing (Point, ReferenceFrame)
+import Conductor exposing (Net)
 import Html exposing (Attribute, Html, button, div, h3, input, p, text)
 import Html.Attributes exposing (autocomplete, class, disabled, id, placeholder, value)
 import Html.Events exposing (keyCode, onClick, onFocus, onInput, preventDefaultOn)
@@ -13,6 +14,7 @@ type Form
     = WelcomeForm
     | NoForm
     | RefForm RefFormData
+    | NetForm NetFormData
 
 
 type alias RefFormData =
@@ -23,9 +25,17 @@ type alias RefFormData =
     }
 
 
+type alias NetFormData =
+    { select : Maybe Net
+    , inputName : String
+    , inputColor : String
+    }
+
+
 type alias ViewData msg =
     { welcome : ViewWelcome msg
     , ref : ViewRef msg
+    , net : ViewNet msg
     }
 
 
@@ -38,6 +48,12 @@ type alias ViewWelcome msg =
 type alias ViewRef msg =
     { apply : RefFormData -> msg
     , clear : msg
+    }
+
+
+type alias ViewNet msg =
+    { apply : NetFormData -> msg
+    , options : List Net
     }
 
 
@@ -156,6 +172,9 @@ view viewData toMsg model =
         RefForm refForm ->
             viewRef viewData.ref toMsg refForm
 
+        NetForm netFormData ->
+            viewNet viewData.net toMsg netFormData
+
 
 viewWelcome : ViewWelcome msg -> Html msg
 viewWelcome welcome =
@@ -223,3 +242,11 @@ viewRef ref toMsg refForm =
                 [ text "Remove" ]
             ]
         ]
+
+
+viewNet : ViewNet msg -> (Msg -> msg) -> NetFormData -> Html msg
+viewNet ref toMsg netForm =
+    -- TODO option for no net, new net, existing net
+    -- todo custom net name input
+    -- todo custom net color picker
+    div [] [ text "todo" ]

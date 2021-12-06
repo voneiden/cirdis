@@ -1,6 +1,62 @@
 module Conductor exposing (..)
 
-import Common exposing (Pad, Point, Radius, Thickness, Width, distanceToPoint, unique)
+import Common exposing (Pad, Point, Radius, Thickness, ThreePoints, TwoPoints, Width, distanceToPoint, unique)
+
+
+type Interaction
+    = NoInteraction
+    | PointInteraction (List Conductor) Point
+    | SegmentInteraction Conductor Point Point
+    | NetInteraction Net
+
+
+type alias Selection =
+    Interaction
+
+
+type alias Highlight =
+    Interaction
+
+
+type alias InteractionInformation =
+    ( Selection, Highlight )
+
+
+isConductorInPrimaryInteraction : Conductor -> Interaction -> Bool
+isConductorInPrimaryInteraction conductor interaction =
+    case interaction of
+        NoInteraction ->
+            False
+
+        PointInteraction conductors _ ->
+            List.member conductor conductors
+
+        SegmentInteraction traceConductor _ _ ->
+            conductor == traceConductor
+
+        NetInteraction net ->
+            conductorNet conductor == net
+
+
+isConductorInSecondaryInteraction : Conductor -> Interaction -> Bool
+isConductorInSecondaryInteraction conductor interaction =
+    let
+        net =
+            conductorNet conductor
+    in
+    case interaction of
+        NoInteraction ->
+            False
+
+        PointInteraction conductors _ ->
+            List.member net (List.map conductorNet conductors)
+
+        SegmentInteraction traceConductor _ _ ->
+            net == conductorNet traceConductor
+
+        NetInteraction _ ->
+            -- NetInteraction is primary only
+            False
 
 
 type Net
@@ -176,6 +232,16 @@ pointToTracePoint point thickness =
 type ConstructionPoint a
     = FreePoint Point a
     | SnapPoint Point Conductor a
+
+
+mapConstructionPoint : (a -> b) -> ConstructionPoint a -> ConstructionPoint b
+mapConstructionPoint f cp =
+    case cp of
+        FreePoint p a ->
+            FreePoint p (f a)
+
+        SnapPoint p c a ->
+            SnapPoint p c (f a)
 
 
 constructionPointPoint : ConstructionPoint a -> Point
@@ -403,9 +469,10 @@ activeLayerSurfaceConductors model =
     Maybe.withDefault [] (Maybe.map (\l -> l.conductors) (List.head model.layers))
 
 
-createTraceToHighlightNets : List (ConstructionPoint Thickness) -> { a | highlightNets : List Net } -> { a | highlightNets : List Net }
-createTraceToHighlightNets points model =
-    { model | highlightNets = List.map conductorNet (constructionPointsToConductors points) }
+
+--createTraceToHighlightNets : List (ConstructionPoint Thickness) -> { a | highlightNets : List Net } -> { a | highlightNets : List Net }
+--createTraceToHighlightNets points model =
+--    { model | highlightNets = List.map conductorNet (constructionPointsToConductors points) }
 
 
 incrementNextNetId : { a | nextNetId : Int } -> { a | nextNetId : Int }

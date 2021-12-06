@@ -1,12 +1,14 @@
 module Visual exposing (..)
 
-import Common exposing (Dimension(..), Point, Radius, ReferenceFrame, Thickness, Width, fromPoint, toPairs)
-import Conductor exposing (Conductor(..), ConstructionPoint(..), Net(..), SurfaceConductor(..), ThroughConductor(..), TracePoint, conductorNet, constructionPointA, constructionPointPoint, surfaceConductorNet)
+import Common exposing (Dimension(..), Point, Radius, ReferenceFrame, Thickness, ThreePoints(..), TwoPoints(..), Width, fromPoint, toPairs)
+import Conductor exposing (Conductor(..), ConstructionPoint(..), Highlight, Interaction(..), InteractionInformation, Net(..), Selection, SurfaceConductor(..), ThroughConductor(..), TracePoint, activeLayerSurfaceConductors, conductorNet, constructionPointA, constructionPointPoint, isConductorInPrimaryInteraction, isConductorInSecondaryInteraction, mapConstructionPoint, snapTo)
+import Json.Decode as Decode
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
 import Svg.Events as SvgE
 import Svg.Lazy
-import Vector
+import Tool exposing (interactionInformation)
+import Vector exposing (generateDoubleRow, generateSingleRow)
 
 
 type VisualElement
@@ -19,12 +21,15 @@ type VisualElement
     | DashedLine Conductor Point Point Thickness
     | ConstructionLine Point Point Thickness
     | ConstructionSegment (List (ConstructionPoint Thickness))
-    | ConstructionCrosshair (ConstructionPoint Thickness)
+    | ConstructionCrosshair (ConstructionPoint ())
     | Text Point String Int Float
+    | Background
 
 
 type Msg
     = Click VisualElement
+    | MouseOver VisualElement
+    | MouseOut VisualElement
 
 
 elementConductor : VisualElement -> Maybe Conductor
@@ -63,6 +68,9 @@ elementConductor element =
         Text _ _ _ _ ->
             Nothing
 
+        Background ->
+            Nothing
+
 
 viewVisualElement : ModelVisuals a -> VisualElement -> Svg Msg
 viewVisualElement model element =
@@ -75,7 +83,9 @@ viewVisualElement model element =
             viewCircle point
                 radius
                 [ SvgA.fill color
-                , SvgE.onClick (Click element)
+                , SvgE.stopPropagationOn "click" (Decode.succeed ( Click element, True ))
+                , SvgE.stopPropagationOn "mouseover" (Decode.succeed ( MouseOver element, True ))
+                , SvgE.onMouseOut (MouseOut element)
                 , SvgA.class "clickable"
                 ]
                 (Maybe.map (\t -> ( t, "white" )) maybeText)
@@ -126,7 +136,9 @@ viewVisualElement model element =
                 p2
                 thickness
                 [ SvgA.stroke <| deriveColor model element
-                , SvgE.onClick (Click element)
+                , SvgE.stopPropagationOn "click" (Decode.succeed ( Click element, True ))
+                , SvgE.stopPropagationOn "mouseover" (Decode.succeed ( MouseOver element, True ))
+                , SvgE.onMouseOut (MouseOut element)
                 , SvgA.strokeLinecap "round"
                 , SvgA.class "clickable"
                 ]
@@ -136,7 +148,9 @@ viewVisualElement model element =
                 p2
                 thickness
                 [ SvgA.stroke <| deriveColor model element
-                , SvgE.onClick (Click element)
+                , SvgE.stopPropagationOn "click" (Decode.succeed ( Click element, True ))
+                , SvgE.stopPropagationOn "mouseover" (Decode.succeed ( MouseOver element, True ))
+                , SvgE.onMouseOut (MouseOut element)
                 , SvgA.class "clickable"
                 , SvgA.strokeDasharray <| String.join "," [ String.fromFloat (2 * thickness), String.fromFloat (1 * thickness) ]
                 ]
@@ -196,6 +210,9 @@ viewVisualElement model element =
                 , SvgA.style <| "transform-box: fill-box;transform-origin: center;transform:rotate(" ++ String.fromFloat rotation ++ "rad)"
                 ]
                 [ Svg.text string ]
+
+        Background ->
+            Svg.text ""
 
 
 viewCircle : Point -> Radius -> List (Svg.Attribute Msg) -> Maybe ( String, String ) -> Svg Msg
@@ -309,12 +326,10 @@ throughConductorToVisualElement throughConductor =
 
 viewLazyThroughConductors : ModelVisuals a -> List ThroughConductor -> Svg Msg
 viewLazyThroughConductors appearance throughConductors =
-    Svg.Lazy.lazy4
-        (\_ _ _ tc ->
+    Svg.Lazy.lazy2
+        (\_ tc ->
             viewThroughConductors appearance tc
         )
-        appearance.highlightNets
-        appearance.select
         appearance.ref
         throughConductors
 
@@ -370,18 +385,68 @@ traceToVisualElements hidden c tracePoints =
 
 
 type alias ModelVisuals a =
-    { a | highlightNets : List Net, select : List VisualElement, ref : Maybe ReferenceFrame }
+    { a
+        | cursor : Point
+        , constructionCursor : ConstructionPoint ()
+        , ref : Maybe ReferenceFrame
+        , tool : Tool.Tool
+        , thickness : Thickness
+        , radius : Radius
+    }
+
+
+toolSelection : ModelVisuals a -> Selection
+toolSelection model =
+    Tuple.first <| interactionInformation model.tool
+
+
+toolHighlight : ModelVisuals a -> Highlight
+toolHighlight model =
+    Tuple.second <| interactionInformation model.tool
+
+
+isMaybeConductorSelected : ModelVisuals a -> Maybe Conductor -> Bool
+isMaybeConductorSelected model mc =
+    case mc of
+        Just c ->
+            isConductorInPrimaryInteraction c (toolSelection model)
+
+        Nothing ->
+            False
+
+
+isMaybeConductorPrimaryHighlighted : ModelVisuals a -> Maybe Conductor -> Bool
+isMaybeConductorPrimaryHighlighted model mc =
+    case mc of
+        Just c ->
+            isConductorInPrimaryInteraction c (toolHighlight model)
+
+        Nothing ->
+            False
+
+
+isMaybeConductorSecondaryHighlighted : ModelVisuals a -> Maybe Conductor -> Bool
+isMaybeConductorSecondaryHighlighted model mc =
+    case mc of
+        Just c ->
+            isConductorInSecondaryInteraction c (toolHighlight model)
+
+        Nothing ->
+            False
 
 
 deriveColor : ModelVisuals a -> VisualElement -> String
 deriveColor model element =
     let
-        net =
+        mc =
             elementConductor element
+
+        net =
+            mc
                 |> Maybe.map conductorNet
                 |> Maybe.withDefault (NoNet 0)
     in
-    if List.member element model.select then
+    if isMaybeConductorSelected model mc then
         case net of
             NoNet _ ->
                 "cyan"
@@ -392,7 +457,7 @@ deriveColor model element =
             CustomNet _ c ->
                 "cyan"
 
-    else if List.member net model.highlightNets then
+    else if isMaybeConductorPrimaryHighlighted model mc then
         case net of
             NoNet _ ->
                 "cyan"
@@ -403,6 +468,17 @@ deriveColor model element =
             CustomNet _ c ->
                 "cyan"
         -- todo?
+
+    else if isMaybeConductorSecondaryHighlighted model mc then
+        case net of
+            NoNet _ ->
+                "blue"
+
+            AutoNet _ ->
+                "blue"
+
+            CustomNet _ c ->
+                "blue"
 
     else
         case net of
@@ -421,9 +497,12 @@ viewSurfaceConductors model layers =
     case layers of
         layer :: hiddenLayers ->
             let
+                highlight =
+                    toolHighlight model
+
                 highlightedHiddenSurfaceConductors =
                     List.concatMap .conductors hiddenLayers
-                        |> List.filter (\c -> List.member (surfaceConductorNet c) model.highlightNets)
+                        |> List.filter (\c -> isConductorInPrimaryInteraction (Surface c) highlight)
 
                 f hidden =
                     List.map (viewVisualElement model) << surfaceConductorToVisualElement hidden
@@ -439,6 +518,195 @@ viewSurfaceConductors model layers =
 
         [] ->
             Svg.text ""
+
+
+
+-- VIEW Tool
+
+
+{-| Display anything and everything related to the active tool
+-}
+viewTool : ModelVisuals a -> Svg Msg
+viewTool model =
+    case model.tool of
+        Tool.SelectTool selection highlight ->
+            case selection of
+                NoInteraction ->
+                    viewVisualElement model (ConstructionCrosshair model.constructionCursor)
+
+                PointInteraction conductors p1 ->
+                    Svg.g []
+                        [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 ()))
+                        , viewVisualElement model (ConstructionCrosshair model.constructionCursor)
+                        ]
+
+                SegmentInteraction conductor p1 p2 ->
+                    Svg.g []
+                        [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 ()))
+                        , viewVisualElement model (ConstructionCrosshair (FreePoint p2 ()))
+                        , viewVisualElement model (ConstructionCrosshair model.constructionCursor)
+                        ]
+
+                NetInteraction net ->
+                    viewVisualElement model (ConstructionCrosshair model.constructionCursor)
+
+        Tool.CreateTraceTool cps highlight ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionSegment (cps ++ [ mapConstructionPoint (\_ -> model.thickness) model.constructionCursor ]))
+                , viewVisualElement model (ConstructionCrosshair model.constructionCursor)
+                ]
+
+        Tool.CreateThroughPadTool ->
+            viewVisualElement model (ConstructionCircle model.cursor model.radius Nothing)
+
+        Tool.CreateNumberedThroughPad pinNumber ->
+            viewVisualElement model (ConstructionCircle model.cursor model.radius (Just <| String.fromInt pinNumber))
+
+        Tool.CreateDipThroughPad someOfThree ->
+            viewDoubleRowTool model someOfThree model.radius ConstructionCircle
+
+        Tool.CreateRowThroughPad startNumber someOfTwo ->
+            viewRowTool model startNumber someOfTwo model.radius ConstructionCircle
+
+        Tool.CreateSurfacePadTool ->
+            viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) Nothing)
+
+        Tool.CreateNumberedSurfacePad pinNumber ->
+            viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just <| String.fromInt pinNumber))
+
+        Tool.CreateSoicSurfacePad someOfThree ->
+            viewDoubleRowTool model someOfThree (model.radius * 2) ConstructionSquare
+
+        Tool.CreateRowSurfacePad startNumber someOfTwo ->
+            viewRowTool model startNumber someOfTwo (model.radius * 2) ConstructionSquare
+
+        Tool.DefineReferenceFrame mp1 mp2 ->
+            viewDefineReferenceFrameTool model mp1 mp2
+
+        Tool.CreateDistanceDimension mp1 ->
+            viewCreateDistanceDimensionTool model mp1
+
+        Tool.CreateAngleDimension mp1 mp2 ->
+            viewCreateAngleDimensionTool model mp1 mp2
+
+        _ ->
+            Svg.text ""
+
+
+viewDefineReferenceFrameTool : ModelVisuals a -> Maybe Point -> Maybe Point -> Svg Msg
+viewDefineReferenceFrameTool model mp1 mp2 =
+    case ( model.ref, mp1, mp2 ) of
+        ( Just ref, _, _ ) ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint ref.p1 ()))
+                , viewVisualElement model (ConstructionCrosshair (FreePoint ref.p2 ()))
+                ]
+
+        ( Nothing, Nothing, Nothing ) ->
+            viewVisualElement model (ConstructionCrosshair model.constructionCursor)
+
+        ( Nothing, Just p1, Nothing ) ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 ()))
+                , viewVisualElement model (ConstructionCrosshair model.constructionCursor)
+                ]
+
+        ( Nothing, Nothing, Just p2 ) ->
+            -- TODO create a type that has only these three variants
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint p2 ()))
+                , viewVisualElement model (ConstructionCrosshair model.constructionCursor)
+                ]
+
+        ( Nothing, Just p1, Just p2 ) ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 ()))
+                , viewVisualElement model (ConstructionCrosshair (FreePoint p2 ()))
+                ]
+
+
+viewCreateDistanceDimensionTool : ModelVisuals a -> Maybe Point -> Svg Msg
+viewCreateDistanceDimensionTool model mp1 =
+    case mp1 of
+        Nothing ->
+            viewVisualElement model (ConstructionCrosshair model.constructionCursor)
+
+        Just p1 ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 ()))
+                , viewVisualElement model (ConstructionLine p1 (constructionPointPoint model.constructionCursor) 1)
+                , viewVisualElement model (ConstructionCrosshair model.constructionCursor)
+                ]
+
+
+viewCreateAngleDimensionTool : ModelVisuals a -> Maybe Point -> Maybe Point -> Svg Msg
+viewCreateAngleDimensionTool model mp1 mp2 =
+    case ( mp1, mp2 ) of
+        ( Just p1, Nothing ) ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 ()))
+                , viewVisualElement model (ConstructionLine p1 (constructionPointPoint model.constructionCursor) 1)
+                , viewVisualElement model (ConstructionCrosshair model.constructionCursor)
+                ]
+
+        ( Just p1, Just p2 ) ->
+            Svg.g []
+                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 ()))
+                , viewVisualElement model (ConstructionLine p1 p2 1)
+                , viewVisualElement model (ConstructionCrosshair (FreePoint p2 ()))
+                , viewVisualElement model (ConstructionLine p1 (constructionPointPoint model.constructionCursor) 1)
+                , viewVisualElement model (ConstructionCrosshair model.constructionCursor)
+                ]
+
+        _ ->
+            viewVisualElement model (ConstructionCrosshair model.constructionCursor)
+
+
+viewRowTool : ModelVisuals a -> Int -> TwoPoints -> Float -> (Point -> Float -> Maybe String -> VisualElement) -> Svg Msg
+viewRowTool model startNumber somePoints size toVisual =
+    case somePoints of
+        NoneOfTwo ->
+            viewVisualElement model (toVisual model.cursor size (Just <| String.fromInt startNumber))
+
+        OneOfTwo p1 ->
+            Svg.g []
+                [ viewVisualElement model (toVisual p1 size (Just <| String.fromInt startNumber))
+                , viewVisualElement model (toVisual model.cursor size (Just <| "?"))
+                ]
+
+        TwoOfTwo p1 p2 ->
+            let
+                shape =
+                    generateSingleRow startNumber (model.radius * 2) p1 p2 model.cursor
+            in
+            Svg.g [] <|
+                List.map (\( point, pad ) -> viewVisualElement model (toVisual point size (Maybe.map String.fromInt pad.number))) shape
+
+
+viewDoubleRowTool : ModelVisuals a -> ThreePoints -> Float -> (Point -> Float -> Maybe String -> VisualElement) -> Svg Msg
+viewDoubleRowTool model somePoints size toVisual =
+    case somePoints of
+        -- todo combine code
+        NoneOfThree ->
+            viewRowTool model 1 NoneOfTwo size toVisual
+
+        OneOfThree p1 ->
+            viewRowTool model 1 (OneOfTwo p1) size toVisual
+
+        TwoOfThree p1 p2 ->
+            viewRowTool model 1 (TwoOfTwo p1 p2) size toVisual
+
+        ThreeOfThree p1 p2 p3 ->
+            let
+                shape =
+                    generateDoubleRow (model.radius * 2) p1 p2 p3 model.cursor
+            in
+            Svg.g [] <|
+                List.map (\( point, pad ) -> viewVisualElement model (toVisual point size (Maybe.map String.fromInt pad.number))) shape
+
+
+
+-- VIEW Dimensions
 
 
 viewDimensions : ModelVisuals a -> List Dimension -> Svg Msg

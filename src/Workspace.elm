@@ -1,6 +1,6 @@
 module Workspace exposing (..)
 
-import Common exposing (Color, CtrlPressed, Dimension, Dragging, Point, Radius, ReferenceFrame, ShiftPressed, Thickness, Width, cycle)
+import Common exposing (Color, CtrlPressed, Dimension, Dragging, Point, Radius, ReferenceFrame, ShiftPressed, Thickness, Width, chainUpdate3, cycle)
 import Conductor exposing (..)
 import Form
 import Tool exposing (Tool)
@@ -14,21 +14,21 @@ import Visual
 type alias Model =
     { layers : List Layer
     , cursor : Point
+    , constructionCursor : ConstructionPoint ()
     , focused : Bool
     , transform : Transform
     , canvas : Canvas
-    , radius : Float
-    , thickness : Float
+    , radius : Float -- fixme this is tool related
+    , thickness : Float -- fixme this is tool related
     , tool : Tool
     , conductors : List ThroughConductor
     , nextNetId : Int -- Running id for nets
     , snapDistance : Float
     , autoNetColor : String
-    , highlightNets : List Net
-    , select : List Visual.VisualElement
     , ref : Maybe ReferenceFrame
     , form : Form.Form
     , dimensions : List Dimension
+    , lastVisualMouseOver : Visual.VisualElement
     }
 
 
@@ -36,21 +36,21 @@ defaultModel : Model
 defaultModel =
     { layers = []
     , cursor = Point 0 0
+    , constructionCursor = FreePoint (Point 0 0) ()
     , focused = False
     , transform = defaultTransform
     , canvas = { width = 0, height = 0 }
     , radius = 10
     , thickness = 5
-    , tool = Tool.SelectTool Nothing
+    , tool = Tool.SelectTool Conductor.NoInteraction Conductor.NoInteraction
     , conductors = []
     , nextNetId = 1
     , snapDistance = 10
     , autoNetColor = ""
-    , highlightNets = []
-    , select = []
     , ref = Nothing
     , form = Form.WelcomeForm
     , dimensions = []
+    , lastVisualMouseOver = Visual.Background
     }
 
 
@@ -144,24 +144,15 @@ update : Msg -> Model -> ( Model, Cmd Msg, Bool )
 update msg model =
     case msg of
         SetCursor point ( dx, dy ) dragging ->
+            let
+                cp =
+                    snapTo model.snapDistance point model.conductors (activeLayerSurfaceConductors model) ()
+            in
             if dragging then
-                ( { model | cursor = point, transform = translateTransform model.transform dx dy }, Cmd.none, False )
+                ( { model | cursor = point, constructionCursor = cp, transform = translateTransform model.transform dx dy }, Cmd.none, False )
 
             else
-                case model.tool of
-                    Tool.CreateTraceTool cps ->
-                        let
-                            snapPoint =
-                                snapTo model.snapDistance point model.conductors (activeLayerSurfaceConductors model) 0
-                        in
-                        ( { model | cursor = point }
-                            |> createTraceToHighlightNets (snapPoint :: cps)
-                        , Cmd.none
-                        , False
-                        )
-
-                    _ ->
-                        ( { model | cursor = point }, Cmd.none, False )
+                ( { model | cursor = point, constructionCursor = cp }, Cmd.none, False )
 
         LeftClick point ->
             if List.isEmpty model.layers then
@@ -195,44 +186,43 @@ update msg model =
         Unfocus ->
             ( { model | focused = False }, Cmd.none, False )
 
-        VisualElementMsg (Visual.Click element) ->
-            case element of
-                Visual.Circle conductor point radius _ ->
-                    ( model, Cmd.none, True )
+        VisualElementMsg visualElementMsg ->
+            case visualElementMsg of
+                Visual.Click element ->
+                    case element of
+                        Visual.Line conductor p1 p2 _ ->
+                            ( { model | tool = Tool.setToolSelection model.tool (Conductor.SegmentInteraction conductor p1 p2) }, Cmd.none, True )
 
-                -- TODO
-                Visual.ConstructionCircle point radius _ ->
-                    ( model, Cmd.none, True )
+                        Visual.Background ->
+                            ( { model | tool = Tool.setToolSelection model.tool Conductor.NoInteraction }, Cmd.none, False )
 
-                Visual.Square conductor point width _ ->
-                    ( model, Cmd.none, True )
+                        _ ->
+                            ( model, Cmd.none, False )
 
-                Visual.SquareOutline conductor point width _ ->
-                    ( model, Cmd.none, True )
+                Visual.MouseOver visualElement ->
+                    let
+                        newModel =
+                            { model | lastVisualMouseOver = visualElement }
+                    in
+                    case visualElement of
+                        Visual.Line conductor p1 p2 _ ->
+                            ( { newModel | tool = Tool.setToolHighlight model.tool (Conductor.SegmentInteraction conductor p1 p2) }, Cmd.none, True )
 
-                Visual.ConstructionSquare _ _ _ ->
-                    ( model, Cmd.none, False )
+                        Visual.Circle conductor point _ _ ->
+                            ( { newModel | tool = Tool.setToolHighlight model.tool (Conductor.PointInteraction [ conductor ] point) }, Cmd.none, True )
 
-                Visual.Line conductor p1 p2 _ ->
-                    ( model, Cmd.none, True )
+                        Visual.Background ->
+                            ( { newModel | tool = Tool.setToolHighlight model.tool Conductor.NoInteraction }, Cmd.none, False )
 
-                Visual.DashedLine conductor p1 p2 _ ->
-                    ( model, Cmd.none, True )
+                        _ ->
+                            ( newModel, Cmd.none, False )
 
-                Visual.ConstructionLine _ _ _ ->
-                    ( model, Cmd.none, False )
-
-                Visual.ConstructionSegment constructionPoints ->
-                    ( model, Cmd.none, False )
-
-                Visual.ConstructionCrosshair constructionPoint ->
-                    ( model, Cmd.none, False )
-
-                Visual.Text _ _ _ _ ->
-                    ( model, Cmd.none, False )
+                Visual.MouseOut visualElement ->
+                    Debug.todo "implement mouse out"
 
         ToolMsg toolMsg ->
             Tool.update ToolMsg toolMsg model
+                |> chainUpdate3 (\m -> update (VisualElementMsg <| Visual.MouseOver <| m.lastVisualMouseOver) m)
 
         FormMsg formMsg ->
             Form.update FormMsg formMsg model

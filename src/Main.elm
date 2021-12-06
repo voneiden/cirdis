@@ -2,10 +2,10 @@ port module Main exposing (..)
 
 import Base64
 import Browser exposing (Document)
-import Browser.Dom as Dom
 import Browser.Events exposing (onKeyUp, onMouseUp)
 import Bytes exposing (Bytes)
 import Common exposing (Point, ThreePoints(..), TwoPoints(..), chainUpdate)
+import Conductor
 import Dict exposing (Dict)
 import File exposing (File)
 import File.Download
@@ -156,6 +156,7 @@ type Msg
     | FormWelcomeImportProject
     | FormRefApply Form.RefFormData
     | FormRefClear
+    | FormNetApply Form.NetFormData
     | SaveProject
     | DownloadProject String
     | DownloadProjectFailure ()
@@ -385,7 +386,7 @@ doUpdate msg model =
 
                     81 ->
                         -- q
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.SelectTool Nothing) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.SelectTool Conductor.NoInteraction Conductor.NoInteraction) model.timeline.current) model
 
                     87 ->
                         -- w
@@ -401,7 +402,7 @@ doUpdate msg model =
 
                     68 ->
                         -- d
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateTraceTool []) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateTraceTool [] Conductor.NoInteraction) model.timeline.current) model
 
                     90 ->
                         -- z
@@ -577,6 +578,10 @@ doUpdate msg model =
             -- TODO show error form
             ( model, Cmd.none )
 
+        FormNetApply netFormData ->
+            -- TODO
+            ( model, Cmd.none )
+
 
 undo : Model -> ( Model, Cmd Msg )
 undo model =
@@ -653,6 +658,8 @@ view model =
                                 , SvgA.class <| "tool-" ++ Tool.toolToString model.timeline.current.tool
                                 , VirtualDom.attribute "xmlns" "http://www.w3.org/2000/svg"
                                 , VirtualDom.attribute "xmlns:xlink" "http://www.w3.org/1999/xlink"
+                                , SvgE.onClick (Workspace <| Workspace.VisualElementMsg <| Visual.Click Visual.Background)
+                                , SvgE.onMouseOver (Workspace <| Workspace.VisualElementMsg <| Visual.MouseOver Visual.Background)
 
                                 --
                                 ]
@@ -738,10 +745,10 @@ toolAttrsAndText ( tool, active ) index =
             onClick <| Workspace <| Workspace.ToolMsg <| Tool.SetSubTool index
     in
     case tool of
-        Tool.SelectTool _ ->
+        Tool.SelectTool _ _ ->
             ( [ activeAttr, clickAttr ], text "" )
 
-        Tool.CreateTraceTool _ ->
+        Tool.CreateTraceTool _ _ ->
             ( [ activeAttr, clickAttr ], text "" )
 
         Tool.CreateSurfacePadTool ->
@@ -892,8 +899,8 @@ sidebar model =
         , sidebarKeyRow0 model.timeline.current
         , div [ id "key-row-1" ]
             [ button
-                [ activeClass <| activeTool model (Tool.SelectTool Nothing)
-                , onClick <| toolMsg <| Tool.SetTool <| Tool.SelectTool Nothing
+                [ activeClass <| activeTool model (Tool.SelectTool Conductor.NoInteraction Conductor.NoInteraction)
+                , onClick <| toolMsg <| Tool.SetTool <| Tool.SelectTool Conductor.NoInteraction Conductor.NoInteraction
                 ]
                 [ text "Select", span [ class "keycode" ] [ text "q" ] ]
             , button
@@ -914,8 +921,8 @@ sidebar model =
                 ]
                 [ text "SMT", span [ class "keycode" ] [ text "s" ] ]
             , button
-                [ activeClass <| activeTool model (Tool.CreateTraceTool [])
-                , onClick <| toolMsg <| Tool.SetTool <| Tool.CreateTraceTool []
+                [ activeClass <| activeTool model (Tool.CreateTraceTool [] Conductor.NoInteraction)
+                , onClick <| toolMsg <| Tool.SetTool <| Tool.CreateTraceTool [] Conductor.NoInteraction
                 ]
                 [ text "Trace", span [ class "keycode" ] [ text "d" ] ]
             ]
@@ -941,7 +948,7 @@ activeClass isActive =
 activeTool : Model -> Tool.Tool -> Bool
 activeTool model tool =
     case ( model.timeline.current.tool, tool ) of
-        ( Tool.SelectTool _, Tool.SelectTool _ ) ->
+        ( Tool.SelectTool _ _, Tool.SelectTool _ _ ) ->
             True
 
         ( Tool.CreateSurfacePadTool, Tool.CreateSurfacePadTool ) ->
@@ -968,7 +975,7 @@ activeTool model tool =
         ( Tool.CreateRowThroughPad _ _, Tool.CreateThroughPadTool ) ->
             True
 
-        ( Tool.CreateTraceTool _, Tool.CreateTraceTool _ ) ->
+        ( Tool.CreateTraceTool _ _, Tool.CreateTraceTool _ _ ) ->
             True
 
         ( Tool.CreateZoneTool, Tool.CreateZoneTool ) ->
@@ -993,11 +1000,6 @@ viewWorkspace model =
         current =
             model.timeline.current
 
-        appearance =
-            { highlightNets = current.highlightNets
-            , select = current.select
-            }
-
         conductors =
             current.conductors
     in
@@ -1005,14 +1007,14 @@ viewWorkspace model =
         []
 
     else
-        [ fromVisualSvg (Tool.viewTool model.timeline.current)
+        [ fromVisualSvg (Visual.viewTool model.timeline.current)
         ]
             ++ [ fromVisualSvg (Visual.viewSurfaceConductors model.timeline.current model.timeline.current.layers) ]
             ++ [ Svg.lazy2
                     (\_ _ ->
                         fromVisualSvg <| Visual.viewLazyThroughConductors model.timeline.current model.timeline.current.conductors
                     )
-                    appearance
+                    model
                     conductors
                ]
             ++ [ fromVisualSvg (viewDimensions current current.dimensions) ]
@@ -1109,10 +1111,10 @@ viewInfo model =
 
             else
                 case model.timeline.current.tool of
-                    Tool.SelectTool maybeConductor ->
+                    Tool.SelectTool selection highlight ->
                         text "Info about selection"
 
-                    Tool.CreateTraceTool constructionPoints ->
+                    Tool.CreateTraceTool constructionPoints highlight ->
                         text <| "Trace thickness: " ++ String.fromFloat model.timeline.current.thickness
 
                     Tool.CreateSurfacePadTool ->
@@ -1233,6 +1235,10 @@ viewForm model =
             , ref =
                 { apply = FormRefApply
                 , clear = FormRefClear
+                }
+            , net =
+                { apply = FormNetApply
+                , options = []
                 }
             }
 
