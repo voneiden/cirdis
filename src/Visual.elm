@@ -1,7 +1,7 @@
 module Visual exposing (..)
 
 import Common exposing (Dimension(..), Point, Radius, ReferenceFrame, Thickness, ThreePoints(..), TwoPoints(..), Width, fromPoint, toPairs)
-import Conductor exposing (Conductor(..), ConstructionPoint(..), Highlight, Interaction(..), InteractionInformation, Net(..), Selection, SurfaceConductor(..), ThroughConductor(..), TracePoint, activeLayerSurfaceConductors, conductorNet, constructionPointA, constructionPointPoint, isConductorInInteraction, mapConstructionPoint, snapTo)
+import Conductor exposing (Conductor(..), ConstructionPoint(..), Highlight, Interaction(..), InteractionInformation, Net(..), Selection, SurfaceConductor(..), ThroughConductor(..), TracePoint, activeLayerSurfaceConductors, conductorNet, constructionPointA, constructionPointPoint, isConductorInPrimaryInteraction, isConductorInSecondaryInteraction, mapConstructionPoint, snapTo)
 import Json.Decode as Decode
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
@@ -409,17 +409,27 @@ isMaybeConductorSelected : ModelVisuals a -> Maybe Conductor -> Bool
 isMaybeConductorSelected model mc =
     case mc of
         Just c ->
-            isConductorInInteraction c (toolSelection model)
+            isConductorInPrimaryInteraction c (toolSelection model)
 
         Nothing ->
             False
 
 
-isMaybeConductorHighlighted : ModelVisuals a -> Maybe Conductor -> Bool
-isMaybeConductorHighlighted model mc =
+isMaybeConductorPrimaryHighlighted : ModelVisuals a -> Maybe Conductor -> Bool
+isMaybeConductorPrimaryHighlighted model mc =
     case mc of
         Just c ->
-            isConductorInInteraction c (toolHighlight model)
+            isConductorInPrimaryInteraction c (toolHighlight model)
+
+        Nothing ->
+            False
+
+
+isMaybeConductorSecondaryHighlighted : ModelVisuals a -> Maybe Conductor -> Bool
+isMaybeConductorSecondaryHighlighted model mc =
+    case mc of
+        Just c ->
+            isConductorInSecondaryInteraction c (toolHighlight model)
 
         Nothing ->
             False
@@ -447,7 +457,7 @@ deriveColor model element =
             CustomNet _ c ->
                 "cyan"
 
-    else if isMaybeConductorHighlighted model mc then
+    else if isMaybeConductorPrimaryHighlighted model mc then
         case net of
             NoNet _ ->
                 "cyan"
@@ -458,6 +468,17 @@ deriveColor model element =
             CustomNet _ c ->
                 "cyan"
         -- todo?
+
+    else if isMaybeConductorSecondaryHighlighted model mc then
+        case net of
+            NoNet _ ->
+                "blue"
+
+            AutoNet _ ->
+                "blue"
+
+            CustomNet _ c ->
+                "blue"
 
     else
         case net of
@@ -481,7 +502,7 @@ viewSurfaceConductors model layers =
 
                 highlightedHiddenSurfaceConductors =
                     List.concatMap .conductors hiddenLayers
-                        |> List.filter (\c -> isConductorInInteraction (Surface c) highlight)
+                        |> List.filter (\c -> isConductorInPrimaryInteraction (Surface c) highlight)
 
                 f hidden =
                     List.map (viewVisualElement model) << surfaceConductorToVisualElement hidden

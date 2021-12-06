@@ -22,8 +22,8 @@ type alias InteractionInformation =
     ( Selection, Highlight )
 
 
-isConductorInInteraction : Conductor -> Interaction -> Bool
-isConductorInInteraction conductor interaction =
+isConductorInPrimaryInteraction : Conductor -> Interaction -> Bool
+isConductorInPrimaryInteraction conductor interaction =
     case interaction of
         NoInteraction ->
             False
@@ -36,6 +36,27 @@ isConductorInInteraction conductor interaction =
 
         NetInteraction net ->
             conductorNet conductor == net
+
+
+isConductorInSecondaryInteraction : Conductor -> Interaction -> Bool
+isConductorInSecondaryInteraction conductor interaction =
+    let
+        net =
+            conductorNet conductor
+    in
+    case interaction of
+        NoInteraction ->
+            False
+
+        PointInteraction conductors _ ->
+            List.member net (List.map conductorNet conductors)
+
+        SegmentInteraction traceConductor _ _ ->
+            net == conductorNet traceConductor
+
+        NetInteraction _ ->
+            -- NetInteraction is primary only
+            False
 
 
 type Net

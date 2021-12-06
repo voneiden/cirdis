@@ -1,6 +1,6 @@
 module Workspace exposing (..)
 
-import Common exposing (Color, CtrlPressed, Dimension, Dragging, Point, Radius, ReferenceFrame, ShiftPressed, Thickness, Width, cycle)
+import Common exposing (Color, CtrlPressed, Dimension, Dragging, Point, Radius, ReferenceFrame, ShiftPressed, Thickness, Width, chainUpdate3, cycle)
 import Conductor exposing (..)
 import Form
 import Tool exposing (Tool)
@@ -28,6 +28,7 @@ type alias Model =
     , ref : Maybe ReferenceFrame
     , form : Form.Form
     , dimensions : List Dimension
+    , lastVisualMouseOver : Visual.VisualElement
     }
 
 
@@ -49,6 +50,7 @@ defaultModel =
     , ref = Nothing
     , form = Form.WelcomeForm
     , dimensions = []
+    , lastVisualMouseOver = Visual.Background
     }
 
 
@@ -198,21 +200,29 @@ update msg model =
                             ( model, Cmd.none, False )
 
                 Visual.MouseOver visualElement ->
+                    let
+                        newModel =
+                            { model | lastVisualMouseOver = visualElement }
+                    in
                     case visualElement of
                         Visual.Line conductor p1 p2 _ ->
-                            ( { model | tool = Tool.setToolHighlight model.tool (Conductor.SegmentInteraction conductor p1 p2) }, Cmd.none, True )
+                            ( { newModel | tool = Tool.setToolHighlight model.tool (Conductor.SegmentInteraction conductor p1 p2) }, Cmd.none, True )
+
+                        Visual.Circle conductor point _ _ ->
+                            ( { newModel | tool = Tool.setToolHighlight model.tool (Conductor.PointInteraction [ conductor ] point) }, Cmd.none, True )
 
                         Visual.Background ->
-                            ( { model | tool = Tool.setToolHighlight model.tool Conductor.NoInteraction }, Cmd.none, False )
+                            ( { newModel | tool = Tool.setToolHighlight model.tool Conductor.NoInteraction }, Cmd.none, False )
 
                         _ ->
-                            ( model, Cmd.none, False )
+                            ( newModel, Cmd.none, False )
 
                 Visual.MouseOut visualElement ->
                     Debug.todo "implement mouse out"
 
         ToolMsg toolMsg ->
             Tool.update ToolMsg toolMsg model
+                |> chainUpdate3 (\m -> update (VisualElementMsg <| Visual.MouseOver <| m.lastVisualMouseOver) m)
 
         FormMsg formMsg ->
             Form.update FormMsg formMsg model

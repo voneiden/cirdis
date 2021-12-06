@@ -12,6 +12,7 @@ import Json.Encode as Encode
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
 import VirtualDom
+import Visual
 import Workspace
 
 
@@ -183,6 +184,7 @@ decodeWorkspace last =
         |> required "ref" (Decode.nullable decodeReferenceFrame)
         |> hardcoded Form.NoForm
         |> required "dimensions" (Decode.list decodeDimension)
+        |> hardcoded Visual.Background
 
 
 encodeLayer : Workspace.Layer -> Encode.Value
