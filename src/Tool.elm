@@ -1,17 +1,89 @@
 module Tool exposing (..)
 
 import Common exposing (Dimension(..), Point, Radius, ReferenceFrame, Thickness, ThreePoints(..), TwoPoints(..), chainUpdate3)
-import Conductor exposing (Conductor, ConstructionPoint(..), Highlight, Interaction(..), InteractionInformation, MergeNet(..), ModelConductors, Net(..), Selection, SurfaceConductor(..), ThroughConductor(..), Tool(..), activeLayerSurfaceConductors, addSurfaceConductor, addSurfaceConductorNoNet, addThroughConductor, constructionPointPoint, constructionPointsToConductors, constructionPointsToTrace, incrementNextNetId, mergeNets, snapTo, updateConductorNet)
+import Conductor
+    exposing
+        ( Conductor
+        , ConstructionPoint(..)
+        , Highlight
+        , Interaction(..)
+        , InteractionInformation
+        , MergeNet(..)
+        , ModelConductors
+        , Net(..)
+        , Selection
+        , SurfaceConductor(..)
+        , ThroughConductor(..)
+        , activeLayerSurfaceConductors
+        , addSurfaceConductor
+        , addSurfaceConductorNoNet
+        , addThroughConductor
+        , constructionPointsToConductors
+        , constructionPointsToTrace
+        , incrementNextNetId
+        , mergeNets
+        , snapTo
+        , updateConductorNet
+        )
 import Form
-import Svg exposing (Svg)
 import Vector exposing (generateDoubleRow, generateSingleRow)
-import Visual exposing (ModelVisuals, VisualElement(..), viewVisualElement)
 
 
 
 -- MODEL
 
 
+type Tool
+    = SelectTool Selection Highlight
+    | CreateTraceTool (List (ConstructionPoint Thickness)) Highlight
+    | CreateSurfacePadTool
+    | CreateNumberedSurfacePad Int
+    | CreateSoicSurfacePad ThreePoints
+    | CreateRowSurfacePad Int TwoPoints -- TODO row should support setting starting pin number
+    | CreateThroughPadTool
+    | CreateNumberedThroughPad Int
+    | CreateDipThroughPad ThreePoints
+    | CreateRowThroughPad Int TwoPoints
+    | CreateZoneTool
+    | DefineReferenceFrame (Maybe Point) (Maybe Point)
+    | CreateDistanceDimension (Maybe Point)
+    | CreateAngleDimension (Maybe Point) (Maybe Point)
+
+
+interactionInformation : Tool -> InteractionInformation
+interactionInformation tool =
+    case tool of
+        SelectTool selection highlight ->
+            ( selection, highlight )
+
+        CreateTraceTool _ highlight ->
+            ( NoInteraction, highlight )
+
+        _ ->
+            ( NoInteraction, NoInteraction )
+
+
+removeSelection : Tool -> Tool
+removeSelection tool =
+    case tool of
+        SelectTool _ highlight ->
+            SelectTool NoInteraction highlight
+
+        _ ->
+            tool
+
+
+removeHighlight : Tool -> Tool
+removeHighlight tool =
+    case tool of
+        SelectTool selection _ ->
+            SelectTool selection NoInteraction
+
+        CreateTraceTool cps _ ->
+            CreateTraceTool cps NoInteraction
+
+        _ ->
+            tool
 
 
 resetTool : Tool -> Tool
@@ -58,8 +130,6 @@ resetTool tool =
 
         CreateAngleDimension _ _ ->
             CreateAngleDimension Nothing Nothing
-
-
 
 
 toolToString : Tool -> String
@@ -158,7 +228,7 @@ type alias ModelTools a =
     }
 
 
-update : (Msg -> msg) -> Msg -> ModelTools (ModelVisuals (ModelConductors a b)) -> ( ModelTools (ModelVisuals (ModelConductors a b)), Cmd msg, Bool )
+update : (Msg -> msg) -> Msg -> ModelTools (ModelConductors a b) -> ( ModelTools (ModelConductors a b), Cmd msg, Bool )
 update toMsg msg model =
     case msg of
         LeftClick point ->
@@ -504,7 +574,7 @@ update toMsg msg model =
                             ( { model | tool = tool }, Cmd.none, False )
 
                 _ ->
-                    ( { model | tool = tool, highlightNets = [] }, Cmd.none, False )
+                    ( { model | tool = removeHighlight tool }, Cmd.none, False )
 
         Reset ->
             ( resetModelTool model, Cmd.none, False )
@@ -604,210 +674,6 @@ updateThickness delta model =
 
 
 -- VIEWS
-
-
-{-| Display anything and everything related to the active tool
--}
-viewTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Svg Visual.Msg
-viewTool model =
-    case model.tool of
-        SelectTool selection highlight ->
-            let
-                cp =
-                    snapTo model.snapDistance model.cursor model.conductors (activeLayerSurfaceConductors model) model.thickness
-            in
-            case selection of
-                NoInteraction ->
-                    viewVisualElement model (ConstructionCrosshair cp)
-
-                PointInteraction conductors p1 ->
-                    Svg.g []
-                        [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
-                        , viewVisualElement model (ConstructionCrosshair cp)
-                        ]
-
-                SegmentInteraction conductor p1 p2 ->
-                    Svg.g []
-                        [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
-                        , viewVisualElement model (ConstructionCrosshair (FreePoint p2 0))
-                        , viewVisualElement model (ConstructionCrosshair cp)
-                        ]
-
-                NetInteraction net ->
-                    viewVisualElement model (ConstructionCrosshair cp)
-
-        CreateTraceTool cps highlight ->
-            let
-                cp =
-                    snapTo model.snapDistance model.cursor model.conductors (activeLayerSurfaceConductors model) model.thickness
-            in
-            Svg.g []
-                [ viewVisualElement model (ConstructionSegment (cps ++ [ cp ]))
-                , viewVisualElement model (ConstructionCrosshair cp)
-                ]
-
-        CreateThroughPadTool ->
-            viewVisualElement model (ConstructionCircle model.cursor model.radius Nothing)
-
-        CreateNumberedThroughPad pinNumber ->
-            viewVisualElement model (ConstructionCircle model.cursor model.radius (Just <| String.fromInt pinNumber))
-
-        CreateDipThroughPad someOfThree ->
-            viewDoubleRowTool model someOfThree model.radius ConstructionCircle
-
-        CreateRowThroughPad startNumber someOfTwo ->
-            viewRowTool model startNumber someOfTwo model.radius ConstructionCircle
-
-        CreateSurfacePadTool ->
-            viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) Nothing)
-
-        CreateNumberedSurfacePad pinNumber ->
-            viewVisualElement model (ConstructionSquare model.cursor (model.radius * 2) (Just <| String.fromInt pinNumber))
-
-        CreateSoicSurfacePad someOfThree ->
-            viewDoubleRowTool model someOfThree (model.radius * 2) ConstructionSquare
-
-        CreateRowSurfacePad startNumber someOfTwo ->
-            viewRowTool model startNumber someOfTwo (model.radius * 2) ConstructionSquare
-
-        DefineReferenceFrame mp1 mp2 ->
-            viewDefineReferenceFrameTool model mp1 mp2
-
-        CreateDistanceDimension mp1 ->
-            viewCreateDistanceDimensionTool model mp1
-
-        CreateAngleDimension mp1 mp2 ->
-            viewCreateAngleDimensionTool model mp1 mp2
-
-        _ ->
-            Svg.text ""
-
-
-viewDefineReferenceFrameTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Maybe Point -> Maybe Point -> Svg Visual.Msg
-viewDefineReferenceFrameTool model mp1 mp2 =
-    let
-        cp =
-            snapTo model.snapDistance model.cursor model.conductors (activeLayerSurfaceConductors model) model.thickness
-    in
-    case ( model.ref, mp1, mp2 ) of
-        ( Just ref, _, _ ) ->
-            Svg.g []
-                [ viewVisualElement model (ConstructionCrosshair (FreePoint ref.p1 0))
-                , viewVisualElement model (ConstructionCrosshair (FreePoint ref.p2 0))
-                ]
-
-        ( Nothing, Nothing, Nothing ) ->
-            viewVisualElement model (ConstructionCrosshair cp)
-
-        ( Nothing, Just p1, Nothing ) ->
-            Svg.g []
-                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
-                , viewVisualElement model (ConstructionCrosshair cp)
-                ]
-
-        ( Nothing, Nothing, Just p2 ) ->
-            -- TODO create a type that has only these three variants
-            Svg.g []
-                [ viewVisualElement model (ConstructionCrosshair (FreePoint p2 0))
-                , viewVisualElement model (ConstructionCrosshair cp)
-                ]
-
-        ( Nothing, Just p1, Just p2 ) ->
-            Svg.g []
-                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
-                , viewVisualElement model (ConstructionCrosshair (FreePoint p2 0))
-                ]
-
-
-viewCreateDistanceDimensionTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Maybe Point -> Svg Visual.Msg
-viewCreateDistanceDimensionTool model mp1 =
-    let
-        cp =
-            snapTo model.snapDistance model.cursor model.conductors (activeLayerSurfaceConductors model) model.thickness
-    in
-    case mp1 of
-        Nothing ->
-            viewVisualElement model (ConstructionCrosshair cp)
-
-        Just p1 ->
-            Svg.g []
-                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
-                , viewVisualElement model (ConstructionLine p1 (constructionPointPoint cp) 1)
-                , viewVisualElement model (ConstructionCrosshair cp)
-                ]
-
-
-viewCreateAngleDimensionTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Maybe Point -> Maybe Point -> Svg Visual.Msg
-viewCreateAngleDimensionTool model mp1 mp2 =
-    let
-        cp =
-            snapTo model.snapDistance model.cursor model.conductors (activeLayerSurfaceConductors model) model.thickness
-    in
-    case ( mp1, mp2 ) of
-        ( Just p1, Nothing ) ->
-            Svg.g []
-                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
-                , viewVisualElement model (ConstructionLine p1 (constructionPointPoint cp) 1)
-                , viewVisualElement model (ConstructionCrosshair cp)
-                ]
-
-        ( Just p1, Just p2 ) ->
-            Svg.g []
-                [ viewVisualElement model (ConstructionCrosshair (FreePoint p1 0))
-                , viewVisualElement model (ConstructionLine p1 p2 1)
-                , viewVisualElement model (ConstructionCrosshair (FreePoint p2 0))
-                , viewVisualElement model (ConstructionLine p1 (constructionPointPoint cp) 1)
-                , viewVisualElement model (ConstructionCrosshair cp)
-                ]
-
-        _ ->
-            viewVisualElement model (ConstructionCrosshair cp)
-
-
-viewRowTool : ModelTools (ModelVisuals (ModelConductors a b)) -> Int -> TwoPoints -> Float -> (Point -> Float -> Maybe String -> VisualElement) -> Svg Visual.Msg
-viewRowTool model startNumber somePoints size toVisual =
-    case somePoints of
-        NoneOfTwo ->
-            viewVisualElement model (toVisual model.cursor size (Just <| String.fromInt startNumber))
-
-        OneOfTwo p1 ->
-            Svg.g []
-                [ viewVisualElement model (toVisual p1 size (Just <| String.fromInt startNumber))
-                , viewVisualElement model (toVisual model.cursor size (Just <| "?"))
-                ]
-
-        TwoOfTwo p1 p2 ->
-            let
-                shape =
-                    generateSingleRow startNumber (model.radius * 2) p1 p2 model.cursor
-            in
-            Svg.g [] <|
-                List.map (\( point, pad ) -> viewVisualElement model (toVisual point size (Maybe.map String.fromInt pad.number))) shape
-
-
-viewDoubleRowTool : ModelTools (ModelVisuals (ModelConductors a b)) -> ThreePoints -> Float -> (Point -> Float -> Maybe String -> VisualElement) -> Svg Visual.Msg
-viewDoubleRowTool model somePoints size toVisual =
-    case somePoints of
-        -- todo combine code
-        NoneOfThree ->
-            viewRowTool model 1 NoneOfTwo size toVisual
-
-        OneOfThree p1 ->
-            viewRowTool model 1 (OneOfTwo p1) size toVisual
-
-        TwoOfThree p1 p2 ->
-            viewRowTool model 1 (TwoOfTwo p1 p2) size toVisual
-
-        ThreeOfThree p1 p2 p3 ->
-            let
-                shape =
-                    generateDoubleRow (model.radius * 2) p1 p2 p3 model.cursor
-            in
-            Svg.g [] <|
-                List.map (\( point, pad ) -> viewVisualElement model (toVisual point size (Maybe.map String.fromInt pad.number))) shape
-
-
-
 -- Utility
 
 

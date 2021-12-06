@@ -14,11 +14,12 @@ import Visual
 type alias Model =
     { layers : List Layer
     , cursor : Point
+    , constructionCursor : ConstructionPoint ()
     , focused : Bool
     , transform : Transform
     , canvas : Canvas
-    , radius : Float
-    , thickness : Float
+    , radius : Float -- fixme this is tool related
+    , thickness : Float -- fixme this is tool related
     , tool : Tool
     , conductors : List ThroughConductor
     , nextNetId : Int -- Running id for nets
@@ -34,6 +35,7 @@ defaultModel : Model
 defaultModel =
     { layers = []
     , cursor = Point 0 0
+    , constructionCursor = FreePoint (Point 0 0) ()
     , focused = False
     , transform = defaultTransform
     , canvas = { width = 0, height = 0 }
@@ -140,11 +142,15 @@ update : Msg -> Model -> ( Model, Cmd Msg, Bool )
 update msg model =
     case msg of
         SetCursor point ( dx, dy ) dragging ->
+            let
+                cp =
+                    snapTo model.snapDistance point model.conductors (activeLayerSurfaceConductors model) ()
+            in
             if dragging then
-                ( { model | cursor = point, transform = translateTransform model.transform dx dy }, Cmd.none, False )
+                ( { model | cursor = point, constructionCursor = cp, transform = translateTransform model.transform dx dy }, Cmd.none, False )
 
             else
-                ( { model | cursor = point }, Cmd.none, False)
+                ( { model | cursor = point, constructionCursor = cp }, Cmd.none, False )
 
         LeftClick point ->
             if List.isEmpty model.layers then

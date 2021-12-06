@@ -3,7 +3,7 @@ module Io exposing (..)
 -- Main model
 
 import Common exposing (Dimension(..), Pad, PadLabel, Point, ReferenceFrame)
-import Conductor exposing (Net(..), SurfaceConductor(..), ThroughConductor(..), TracePoint)
+import Conductor exposing (ConstructionPoint(..), Net(..), SurfaceConductor(..), ThroughConductor(..), TracePoint)
 import Dict exposing (Dict)
 import Form
 import Json.Decode as Decode exposing (Decoder)
@@ -11,7 +11,6 @@ import Json.Decode.Pipeline exposing (hardcoded, required)
 import Json.Encode as Encode
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
-import Tool
 import VirtualDom
 import Workspace
 
@@ -170,6 +169,7 @@ decodeWorkspace last =
     Decode.succeed Workspace.Model
         |> required "layers" (Decode.list decodeLayer)
         |> hardcoded last.cursor
+        |> hardcoded (FreePoint last.cursor ())
         |> hardcoded last.focused
         |> required "transform" decodeTransform
         |> hardcoded last.canvas
@@ -180,8 +180,6 @@ decodeWorkspace last =
         |> required "nextNetId" Decode.int
         |> required "snapDistance" Decode.float
         |> hardcoded last.autoNetColor
-        |> hardcoded []
-        |> hardcoded []
         |> required "ref" (Decode.nullable decodeReferenceFrame)
         |> hardcoded Form.NoForm
         |> required "dimensions" (Decode.list decodeDimension)

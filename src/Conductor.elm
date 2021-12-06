@@ -21,8 +21,9 @@ type alias Highlight =
 type alias InteractionInformation =
     ( Selection, Highlight )
 
-isConductorInteraction : Conductor -> Interaction -> Bool
-isConductorInteraction conductor interaction =
+
+isConductorInInteraction : Conductor -> Interaction -> Bool
+isConductorInInteraction conductor interaction =
     case interaction of
         NoInteraction ->
             False
@@ -35,36 +36,6 @@ isConductorInteraction conductor interaction =
 
         NetInteraction net ->
             conductorNet conductor == net
-
-
-type Tool
-    = SelectTool Selection Highlight
-    | CreateTraceTool (List (ConstructionPoint Thickness)) Highlight
-    | CreateSurfacePadTool
-    | CreateNumberedSurfacePad Int
-    | CreateSoicSurfacePad ThreePoints
-    | CreateRowSurfacePad Int TwoPoints -- TODO row should support setting starting pin number
-    | CreateThroughPadTool
-    | CreateNumberedThroughPad Int
-    | CreateDipThroughPad ThreePoints
-    | CreateRowThroughPad Int TwoPoints
-    | CreateZoneTool
-    | DefineReferenceFrame (Maybe Point) (Maybe Point)
-    | CreateDistanceDimension (Maybe Point)
-    | CreateAngleDimension (Maybe Point) (Maybe Point)
-
-
-interactionInformation : Tool -> InteractionInformation
-interactionInformation tool =
-    case tool of
-        SelectTool selection highlight ->
-            ( selection, highlight )
-
-        CreateTraceTool _ highlight ->
-            ( NoInteraction, highlight )
-
-        _ ->
-            ( NoInteraction, NoInteraction )
 
 
 type Net
@@ -240,6 +211,16 @@ pointToTracePoint point thickness =
 type ConstructionPoint a
     = FreePoint Point a
     | SnapPoint Point Conductor a
+
+
+mapConstructionPoint : (a -> b) -> ConstructionPoint a -> ConstructionPoint b
+mapConstructionPoint f cp =
+    case cp of
+        FreePoint p a ->
+            FreePoint p (f a)
+
+        SnapPoint p c a ->
+            SnapPoint p c (f a)
 
 
 constructionPointPoint : ConstructionPoint a -> Point

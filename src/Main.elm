@@ -2,7 +2,6 @@ port module Main exposing (..)
 
 import Base64
 import Browser exposing (Document)
-import Browser.Dom as Dom
 import Browser.Events exposing (onKeyUp, onMouseUp)
 import Bytes exposing (Bytes)
 import Common exposing (Point, ThreePoints(..), TwoPoints(..), chainUpdate)
@@ -387,23 +386,23 @@ doUpdate msg model =
 
                     81 ->
                         -- q
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Conductor.SelectTool Conductor.NoInteraction Conductor.NoInteraction) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.SelectTool Conductor.NoInteraction Conductor.NoInteraction) model.timeline.current) model
 
                     87 ->
                         -- w
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Conductor.CreateDistanceDimension Nothing) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateDistanceDimension Nothing) model.timeline.current) model
 
                     65 ->
                         -- a
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Conductor.CreateThroughPadTool) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateThroughPadTool) model.timeline.current) model
 
                     83 ->
                         -- s
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Conductor.CreateSurfacePadTool) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateSurfacePadTool) model.timeline.current) model
 
                     68 ->
                         -- d
-                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Conductor.CreateTraceTool [] Conductor.NoInteraction) model.timeline.current) model
+                        fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateTraceTool [] Conductor.NoInteraction) model.timeline.current) model
 
                     90 ->
                         -- z
@@ -660,6 +659,7 @@ view model =
                                 , VirtualDom.attribute "xmlns" "http://www.w3.org/2000/svg"
                                 , VirtualDom.attribute "xmlns:xlink" "http://www.w3.org/1999/xlink"
                                 , SvgE.onClick (Workspace <| Workspace.VisualElementMsg <| Visual.Click Visual.Background)
+                                , SvgE.onMouseOver (Workspace <| Workspace.VisualElementMsg <| Visual.MouseOver Visual.Background)
 
                                 --
                                 ]
@@ -1007,14 +1007,14 @@ viewWorkspace model =
         []
 
     else
-        [ fromVisualSvg (Tool.viewTool model.timeline.current)
+        [ fromVisualSvg (Visual.viewTool model.timeline.current)
         ]
             ++ [ fromVisualSvg (Visual.viewSurfaceConductors model.timeline.current model.timeline.current.layers) ]
             ++ [ Svg.lazy2
                     (\_ _ ->
                         fromVisualSvg <| Visual.viewLazyThroughConductors model.timeline.current model.timeline.current.conductors
                     )
-                    appearance
+                    model
                     conductors
                ]
             ++ [ fromVisualSvg (viewDimensions current current.dimensions) ]
