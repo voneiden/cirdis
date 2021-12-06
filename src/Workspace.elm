@@ -218,7 +218,8 @@ update msg model =
                             ( newModel, Cmd.none, False )
 
                 Visual.MouseOut visualElement ->
-                    Debug.todo "implement mouse out"
+                    -- TODO?
+                    (model, Cmd.none, False)
 
         ToolMsg toolMsg ->
             Tool.update ToolMsg toolMsg model
