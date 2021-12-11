@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import {defineConfig} from 'vite'
 import elmPlugin from 'vite-plugin-elm'
 // vite.config.js
 export default defineConfig({
@@ -7,6 +7,7 @@ export default defineConfig({
   base: "/cirdis/",
   plugins: [elmPlugin()],
   build: {
-    outDir: "../docs/"
+    outDir: "../docs/",
+    emptyOutDir: true
   }
 })

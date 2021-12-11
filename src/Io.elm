@@ -25,6 +25,7 @@ type alias MainModel =
     , canvasBoundingClientRect : BoundingClientRect
     , timeline : WorkspaceTimeline
     , keyDownPreventDefault : Bool
+    , ePressed : Bool
     , zPressed : Bool
     , xPressed : Bool
     , vPressed : Bool
@@ -113,6 +114,7 @@ decodeMainModel last layerB64DataList =
         |> hardcoded last.canvasBoundingClientRect
         |> required "workspace" (Decode.map (\ws -> { defaultWorkspaceTimeline | current = ws }) (decodeWorkspace last.timeline.current))
         |> hardcoded last.keyDownPreventDefault
+        |> hardcoded last.ePressed
         |> hardcoded last.zPressed
         |> hardcoded last.xPressed
         |> hardcoded last.vPressed

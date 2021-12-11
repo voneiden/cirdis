@@ -133,6 +133,126 @@ mergeNets model snappedConductors =
             MergeNoNet conductors
 
 
+isConductorInPoints : List Point -> Conductor -> Bool
+isConductorInPoints points conductor =
+    List.foldl
+        (\p b ->
+            if b then
+                b
+
+            else
+                List.member p points
+        )
+        False
+        (conductorPoints conductor)
+
+
+{-| Given list of conductors that are known to be connected and a list of conductors that might be connected,
+return a tuple containing list of conductors that are connected together and conductors that are not connected together.
+
+In a normal use case, the connected argument should be a singleton when starting the iteratoin.
+
+-}
+findConnected : List Conductor -> List Conductor -> ( List Conductor, List Conductor )
+findConnected connected unconnected =
+    case connected of
+        [] ->
+            ( [], unconnected )
+
+        initial :: remainingConnected ->
+            let
+                initialPoints =
+                    conductorPoints initial
+
+                ( newConnected, newUnconnected ) =
+                    List.partition (isConductorInPoints initialPoints) unconnected
+
+                ( recursiveConnected, recursiveUnconnected ) =
+                    findConnected (remainingConnected ++ newConnected) newUnconnected
+            in
+            -- For every connected conductor, we redo the search with the remaining unconnected conductors
+            ( initial :: recursiveConnected, recursiveUnconnected )
+
+
+{-| splitNet function takes a net and checks it for net splits
+-}
+checkNetSplit : Net -> ModelConductors a b -> ModelConductors a b
+checkNetSplit net model =
+    let
+        modelConductors =
+            allConductors model
+
+        netConductors =
+            netsConductors modelConductors [ net ]
+    in
+    case modelConductors of
+        [] ->
+            model
+
+        initial :: rest ->
+            let
+                ( connected, unconnected ) =
+                    findConnected [ initial ] rest
+            in
+            case ( connected, unconnected ) of
+                -- Edge case: If we have only one connected, might as well split everything
+                ( [ c ], ucs ) ->
+                    splitNet model (c :: ucs)
+
+                ( _, [] ) ->
+                    model
+
+                ( _, ucs ) ->
+                    splitNet model ucs
+
+
+{-| Split the given conductors from their existing net into new net(s)
+-}
+splitNet : ModelConductors a b -> List Conductor -> ModelConductors a b
+splitNet model conductors =
+    -- TODO deal with custom net !
+    case conductors of
+        [] ->
+            model
+
+        first :: rest ->
+            let
+                net =
+                    conductorNet first
+
+                ( connected, unconnected ) =
+                    findConnected [ first ] rest
+            in
+            (case connected of
+                [] ->
+                    model
+
+                [ c ] ->
+                    setConductorsNet model [ c ] (NoNet model.nextNetId)
+                        |> (\m -> { m | nextNetId = m.nextNetId + 1 })
+
+                cs ->
+                    case net of
+                        NoNet _ ->
+                            setConductorsNet model cs (NoNet model.nextNetId)
+                                |> (\m -> { m | nextNetId = m.nextNetId + 1 })
+
+                        AutoNet _ ->
+                            setConductorsNet model cs (AutoNet model.nextNetId)
+                                |> (\m -> { m | nextNetId = m.nextNetId + 1 })
+
+                        CustomNet _ _ ->
+                            -- TODO !
+                            model
+            )
+                |> (\m -> splitNet m unconnected)
+
+
+setConductorsNet : ModelConductors a b -> List Conductor -> Net -> ModelConductors a b
+setConductorsNet model conductors net =
+    List.foldl (updateConductorNet net) model conductors
+
+
 type Conductor
     = Surface SurfaceConductor
     | Through ThroughConductor
@@ -328,6 +448,33 @@ addThroughConductor toConductor model =
     case toConductor (NoNet model.nextNetId) of
         ThroughPad pad point radius net ->
             { model | nextNetId = model.nextNetId + 1, conductors = ThroughPad pad point radius net :: model.conductors }
+
+
+removeConductor : Conductor -> ModelConductors a b -> ModelConductors a b
+removeConductor conductor model =
+    case conductor of
+        Through c ->
+            removeThroughConductor model c
+
+        Surface c ->
+            removeSurfaceConductor model c
+
+
+removeThroughConductor : ModelConductors a b -> ThroughConductor -> ModelConductors a b
+removeThroughConductor model tc =
+    { model | conductors = List.filter (\x -> x /= tc) model.conductors }
+
+
+removeSurfaceConductor : ModelConductors a b -> SurfaceConductor -> ModelConductors a b
+removeSurfaceConductor model sc =
+    { model
+        | layers =
+            List.map
+                (\l ->
+                    { l | conductors = List.filter (\x -> x /= sc) l.conductors }
+                )
+                model.layers
+    }
 
 
 addSurfaceConductorNoNet : (Net -> SurfaceConductor) -> ModelConductors a b -> ModelConductors a b

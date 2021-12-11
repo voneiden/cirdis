@@ -106,6 +106,8 @@ viewVisualElement model element =
             viewSquare point
                 width
                 [ SvgA.fill <| deriveColor model element
+                , SvgE.stopPropagationOn "click" (Decode.succeed ( Click element, True ))
+                , SvgE.stopPropagationOn "mouseover" (Decode.succeed ( MouseOver element, True ))
                 ]
                 (Maybe.map (\t -> ( t, "white" )) maybeText)
 

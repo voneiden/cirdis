@@ -193,6 +193,12 @@ update msg model =
                         Visual.Line conductor p1 p2 _ ->
                             ( { model | tool = Tool.setToolSelection model.tool (Conductor.SegmentInteraction conductor p1 p2) }, Cmd.none, True )
 
+                        Visual.Circle conductor point _ _ ->
+                            ( { model | tool = Tool.setToolSelection model.tool (Conductor.PointInteraction [ conductor ] point) }, Cmd.none, True )
+
+                        Visual.Square conductor point _ _ ->
+                            ( { model | tool = Tool.setToolSelection model.tool (Conductor.PointInteraction [ conductor ] point) }, Cmd.none, True )
+
                         Visual.Background ->
                             ( { model | tool = Tool.setToolSelection model.tool Conductor.NoInteraction }, Cmd.none, False )
 
@@ -211,6 +217,9 @@ update msg model =
                         Visual.Circle conductor point _ _ ->
                             ( { newModel | tool = Tool.setToolHighlight model.tool (Conductor.PointInteraction [ conductor ] point) }, Cmd.none, True )
 
+                        Visual.Square conductor point _ _ ->
+                            ( { newModel | tool = Tool.setToolHighlight model.tool (Conductor.PointInteraction [ conductor ] point) }, Cmd.none, True )
+
                         Visual.Background ->
                             ( { newModel | tool = Tool.setToolHighlight model.tool Conductor.NoInteraction }, Cmd.none, False )
 
@@ -219,7 +228,7 @@ update msg model =
 
                 Visual.MouseOut visualElement ->
                     -- TODO?
-                    (model, Cmd.none, False)
+                    ( model, Cmd.none, False )
 
         ToolMsg toolMsg ->
             Tool.update ToolMsg toolMsg model

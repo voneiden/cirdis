@@ -119,6 +119,7 @@ init _ =
       , canvasBoundingClientRect = BoundingClientRect 0 0 0 0 0
       , timeline = defaultWorkspaceTimeline
       , keyDownPreventDefault = True
+      , ePressed = False
       , zPressed = False
       , xPressed = False
       , vPressed = False
@@ -148,6 +149,7 @@ type Msg
     | KeyDown Key
     | KeyUp Key
     | Workspace Workspace.Msg
+    | Erase
     | Undo
     | Redo
     | StartCapture
@@ -404,6 +406,12 @@ doUpdate msg model =
                         -- d
                         fromWorkspaceUpdate (Workspace.update (Workspace.ToolMsg <| Tool.SetTool <| Tool.CreateTraceTool [] Conductor.NoInteraction) model.timeline.current) model
 
+                    -- Partiboi
+                    69 ->
+                        -- e
+                        update Erase model
+                            |> chainUpdate (\m -> ( { m | ePressed = True }, Cmd.none ))
+
                     90 ->
                         -- z
                         update Undo model
@@ -446,6 +454,11 @@ doUpdate msg model =
                     -- ctrl
                     ( { model | ctrl = False }, Cmd.none )
 
+                -- Partiboi
+                69 ->
+                    -- e
+                    ( { model | ePressed = False }, Cmd.none )
+
                 86 ->
                     -- v
                     ( { model | vPressed = False }, Cmd.none )
@@ -470,6 +483,9 @@ doUpdate msg model =
                         _ ->
                             identity
                    )
+
+        Erase ->
+            update (Workspace <| Workspace.ToolMsg Tool.Erase) model
 
         Undo ->
             undo model
@@ -908,6 +924,11 @@ sidebar model =
                 , onClick <| toolMsg <| Tool.SetTool <| Tool.CreateDistanceDimension Nothing
                 ]
                 [ text "Gauge", span [ class "keycode" ] [ text "w" ] ]
+            , button
+                [ activeClass model.ePressed
+                , onClick Erase
+                ]
+                [ text "Erase", span [ class "keycode" ] [ text "e" ] ]
             ]
         , div [ id "key-row-2" ]
             [ button

@@ -1,30 +1,7 @@
 module Tool exposing (..)
 
 import Common exposing (Dimension(..), Point, Radius, ReferenceFrame, Thickness, ThreePoints(..), TwoPoints(..), chainUpdate3)
-import Conductor
-    exposing
-        ( Conductor
-        , ConstructionPoint(..)
-        , Highlight
-        , Interaction(..)
-        , InteractionInformation
-        , MergeNet(..)
-        , ModelConductors
-        , Net(..)
-        , Selection
-        , SurfaceConductor(..)
-        , ThroughConductor(..)
-        , activeLayerSurfaceConductors
-        , addSurfaceConductor
-        , addSurfaceConductorNoNet
-        , addThroughConductor
-        , constructionPointsToConductors
-        , constructionPointsToTrace
-        , incrementNextNetId
-        , mergeNets
-        , snapTo
-        , updateConductorNet
-        )
+import Conductor exposing (Conductor, ConstructionPoint(..), Highlight, Interaction(..), InteractionInformation, MergeNet(..), ModelConductors, Net(..), Selection, SurfaceConductor(..), ThroughConductor(..), activeLayerSurfaceConductors, addSurfaceConductor, addSurfaceConductorNoNet, addThroughConductor, checkNetSplit, conductorNet, constructionPointsToConductors, constructionPointsToTrace, incrementNextNetId, mergeNets, removeConductor, snapTo, updateConductorNet)
 import Form
 import Vector exposing (generateDoubleRow, generateSingleRow)
 
@@ -213,6 +190,7 @@ type Msg
     | Reset
     | SetSubTool Int
     | FormMsg Form.Msg
+    | Erase
 
 
 type alias ModelTools a =
@@ -625,6 +603,42 @@ update toMsg msg model =
 
         FormMsg formMsg ->
             Form.update (toMsg << FormMsg) formMsg model
+
+        Erase ->
+            case model.tool of
+                SelectTool selection _ ->
+                    case selection of
+                        NoInteraction ->
+                            ( model, Cmd.none, False )
+
+                        PointInteraction conductors point ->
+                            ( List.foldl
+                                (\c m ->
+                                    let
+                                        net =
+                                            conductorNet c
+                                    in
+                                    removeConductor c m
+                                        |> checkNetSplit net
+                                )
+                                model
+                                conductors
+                                |> (\m -> { m | tool = setToolSelection m.tool NoInteraction })
+                            , Cmd.none
+                            , True
+                            )
+
+                        SegmentInteraction conductor p1 p2 ->
+                            -- TODO this should remove only a segment, not the whole trace!
+                            ( removeConductor conductor model |> (\m -> { m | tool = setToolSelection m.tool NoInteraction }), Cmd.none, False )
+
+                        NetInteraction net ->
+                            -- Do we want to wreck the whole net?
+                            -- Hey that rhymes
+                            ( model, Cmd.none, False )
+
+                _ ->
+                    ( model, Cmd.none, False )
 
 
 resetModelTool : { a | tool : Tool } -> { a | tool : Tool }
