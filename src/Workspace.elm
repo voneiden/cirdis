@@ -23,7 +23,6 @@ type alias Model =
     , tool : Tool
     , conductors : List ThroughConductor
     , nextNetId : Int -- Running id for nets
-    , snapDistance : Float
     , autoNetColor : String
     , ref : Maybe ReferenceFrame
     , form : Form.Form
@@ -45,7 +44,6 @@ defaultModel =
     , tool = Tool.SelectTool Conductor.NoInteraction Conductor.NoInteraction
     , conductors = []
     , nextNetId = 1
-    , snapDistance = 10
     , autoNetColor = ""
     , ref = Nothing
     , form = Form.WelcomeForm
@@ -146,7 +144,7 @@ update msg model =
         SetCursor point ( dx, dy ) dragging ->
             let
                 cp =
-                    snapTo model.snapDistance point model.conductors (activeLayerSurfaceConductors model) ()
+                    Tool.snapTo model point ()
             in
             if dragging then
                 ( { model | cursor = point, constructionCursor = cp, transform = translateTransform model.transform dx dy }, Cmd.none, False )

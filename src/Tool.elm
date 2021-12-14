@@ -1,7 +1,31 @@
 module Tool exposing (..)
 
 import Common exposing (Dimension(..), Point, Radius, ReferenceFrame, Thickness, ThreePoints(..), TwoPoints(..), chainUpdate3)
-import Conductor exposing (Conductor, ConstructionPoint(..), Highlight, Interaction(..), InteractionInformation, MergeNet(..), ModelConductors, Net(..), Selection, SurfaceConductor(..), ThroughConductor(..), activeLayerSurfaceConductors, addSurfaceConductor, addSurfaceConductorNoNet, addThroughConductor, checkNetSplit, conductorNet, constructionPointsToConductors, constructionPointsToTrace, incrementNextNetId, mergeNets, removeConductor, snapTo, updateConductorNet)
+import Conductor
+    exposing
+        ( Conductor
+        , ConstructionPoint(..)
+        , Highlight
+        , Interaction(..)
+        , InteractionInformation
+        , MergeNet(..)
+        , ModelConductors
+        , Net(..)
+        , Selection
+        , SurfaceConductor(..)
+        , ThroughConductor(..)
+        , addSurfaceConductor
+        , addSurfaceConductorNoNet
+        , addThroughConductor
+        , checkNetSplit
+        , conductorNet
+        , constructionPointsToConductors
+        , constructionPointsToTrace
+        , incrementNextNetId
+        , mergeNets
+        , removeConductor
+        , updateConductorNet
+        )
 import Form
 import Vector exposing (generateDoubleRow, generateSingleRow)
 
@@ -178,6 +202,19 @@ setToolHighlight tool highlight =
             tool
 
 
+toolHighlight : Tool -> Highlight
+toolHighlight tool =
+    case tool of
+        SelectTool _ highlight ->
+            highlight
+
+        CreateTraceTool _ highlight ->
+            highlight
+
+        _ ->
+            NoInteraction
+
+
 
 -- UPDATE
 
@@ -199,11 +236,32 @@ type alias ModelTools a =
         , thickness : Thickness
         , radius : Radius
         , cursor : Point
-        , snapDistance : Float
         , ref : Maybe ReferenceFrame
         , form : Form.Form
         , dimensions : List Dimension
     }
+
+
+snapTo : ModelTools a -> Point -> (b -> ConstructionPoint b)
+snapTo model point =
+    case toolHighlight model.tool of
+        NoInteraction ->
+            FreePoint point
+
+        PointInteraction conductors interactionPoint ->
+            case conductors of
+                c :: _ ->
+                    SnapPoint interactionPoint c
+
+                _ ->
+                    FreePoint point
+
+        SegmentInteraction conductor p1 p2 ->
+            -- TODO snap to segment
+            FreePoint point
+
+        NetInteraction _ ->
+            FreePoint point
 
 
 update : (Msg -> msg) -> Msg -> ModelTools (ModelConductors a b) -> ( ModelTools (ModelConductors a b), Cmd msg, Bool )
@@ -212,7 +270,7 @@ update toMsg msg model =
         LeftClick point ->
             let
                 snapPoint =
-                    snapTo model.snapDistance point model.conductors (activeLayerSurfaceConductors model)
+                    snapTo model point
             in
             case model.tool of
                 CreateTraceTool points highlight ->

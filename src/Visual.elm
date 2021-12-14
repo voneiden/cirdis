@@ -1,7 +1,25 @@
 module Visual exposing (..)
 
 import Common exposing (Dimension(..), Point, Radius, ReferenceFrame, Thickness, ThreePoints(..), TwoPoints(..), Width, fromPoint, toPairs)
-import Conductor exposing (Conductor(..), ConstructionPoint(..), Highlight, Interaction(..), InteractionInformation, Net(..), Selection, SurfaceConductor(..), ThroughConductor(..), TracePoint, activeLayerSurfaceConductors, conductorNet, constructionPointA, constructionPointPoint, isConductorInPrimaryInteraction, isConductorInSecondaryInteraction, mapConstructionPoint, snapTo)
+import Conductor
+    exposing
+        ( Conductor(..)
+        , ConstructionPoint(..)
+        , Highlight
+        , Interaction(..)
+        , InteractionInformation
+        , Net(..)
+        , Selection
+        , SurfaceConductor(..)
+        , ThroughConductor(..)
+        , TracePoint
+        , conductorNet
+        , constructionPointA
+        , constructionPointPoint
+        , isConductorInPrimaryInteraction
+        , isConductorInSecondaryInteraction
+        , mapConstructionPoint
+        )
 import Json.Decode as Decode
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA

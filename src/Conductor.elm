@@ -577,51 +577,6 @@ allConductors model =
 -- UTILITY
 
 
-snapTo : Float -> Point -> List ThroughConductor -> List SurfaceConductor -> (a -> ConstructionPoint a)
-snapTo maxSnapDistance point thts smts =
-    let
-        closest =
-            List.map Through thts
-                ++ List.map Surface smts
-                |> List.filterMap (distanceToConductor point)
-                |> List.sortBy (\( d, _, _ ) -> d)
-                |> List.head
-    in
-    case closest of
-        Just ( conductorDistance, conductorPoint, conductor ) ->
-            if snaps conductor conductorDistance maxSnapDistance then
-                SnapPoint conductorPoint conductor
-
-            else
-                FreePoint point
-
-        Nothing ->
-            FreePoint point
-
-
-snaps : Conductor -> Float -> Float -> Bool
-snaps conductor conductorDistance defaultSnapDistance =
-    case conductor of
-        Surface _ ->
-            conductorDistance < defaultSnapDistance
-
-        Through tc ->
-            case tc of
-                ThroughPad _ _ radius _ ->
-                    conductorDistance <= radius
-
-
-activeLayerSurfaceConductors : ModelConductors a b -> List SurfaceConductor
-activeLayerSurfaceConductors model =
-    Maybe.withDefault [] (Maybe.map (\l -> l.conductors) (List.head model.layers))
-
-
-
---createTraceToHighlightNets : List (ConstructionPoint Thickness) -> { a | highlightNets : List Net } -> { a | highlightNets : List Net }
---createTraceToHighlightNets points model =
---    { model | highlightNets = List.map conductorNet (constructionPointsToConductors points) }
-
-
 incrementNextNetId : { a | nextNetId : Int } -> { a | nextNetId : Int }
 incrementNextNetId model =
     { model | nextNetId = model.nextNetId + 1 }

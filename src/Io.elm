@@ -161,7 +161,6 @@ encodeWorkspace ws =
         , ( "thickness", Encode.float ws.thickness )
         , ( "conductors", Encode.list encodeThroughConductor ws.conductors )
         , ( "nextNetId", Encode.int ws.nextNetId )
-        , ( "snapDistance", Encode.float ws.snapDistance )
         , ( "ref", encodeMaybeReferenceFrame ws.ref )
         , ( "dimensions", Encode.list encodeDimension ws.dimensions )
         ]
@@ -181,7 +180,6 @@ decodeWorkspace last =
         |> hardcoded last.tool
         |> required "conductors" (Decode.list decodeThroughConductor)
         |> required "nextNetId" Decode.int
-        |> required "snapDistance" Decode.float
         |> hardcoded last.autoNetColor
         |> required "ref" (Decode.nullable decodeReferenceFrame)
         |> hardcoded Form.NoForm
